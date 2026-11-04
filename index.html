@@ -83,12 +83,12 @@ input,select{font-family:inherit;font-size:16px}
 .empty{text-align:center;padding:48px 20px;color:var(--txt3)}
 .empty .ic{font-size:44px;margin-bottom:10px}
 /* add bar */
-.addbar{position:fixed;bottom:calc(58px + var(--safe-b));inset-inline:0;z-index:35;padding:8px 12px;
-  max-width:720px;margin:0 auto;inset-inline:50%;transform:translateX(50%)}
+.addbar{position:fixed;bottom:calc(58px + var(--safe-b));left:0;right:0;z-index:35;padding:8px 12px;
+  max-width:720px;margin:0 auto}
 .addbox{background:var(--card);border:1px solid var(--ring);border-radius:16px;box-shadow:0 6px 24px rgba(16,42,31,.14);padding:8px}
 .addrow{display:flex;align-items:center;gap:8px}
 .addrow input{flex:1;border:none;background:transparent;color:var(--txt);outline:none;padding:8px 6px;font-size:16px}
-.addrow .qty{width:52px;border:1px solid var(--line);border-radius:10px;background:var(--card2);text-align:center;padding:8px 4px}
+.addrow .qty{flex:none;width:64px;border:1px solid var(--line);border-radius:10px;background:var(--card2);text-align:center;padding:8px 4px}
 .addrow .go{width:42px;height:42px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:22px;flex:none;display:grid;place-items:center}
 .sugg{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:8px 2px 2px}
 .sugg::-webkit-scrollbar{display:none}
@@ -112,7 +112,7 @@ h2.page{font-size:22px;font-weight:800;margin:4px 0 14px}
 .row-btns{display:flex;gap:8px}
 /* tabbar */
 .tabbar{position:fixed;bottom:0;inset-inline:0;z-index:40;background:var(--card);border-top:1px solid var(--line);
-  display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:var(--safe-b);max-width:720px;margin:0 auto;inset-inline:50%;transform:translateX(50%)}
+  display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:var(--safe-b);max-width:720px;margin:0 auto;left:0;right:0}
 .tab{background:none;border:none;padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--txt3);font-size:11px;font-weight:600}
 .tab svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9}
 .tab.active{color:var(--accent)}

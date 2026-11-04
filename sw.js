@@ -1,5 +1,5 @@
 // סל — offline service worker
-const CACHE = 'sal-v2';
+const CACHE = 'sal-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.png'];
 self.addEventListener('install', e => {
   self.skipWaiting();
