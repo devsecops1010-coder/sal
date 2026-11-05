@@ -1,5 +1,5 @@
 // SmartCart v2 — offline service worker
-const CACHE = 'smartcart-v2-2';
+const CACHE = 'smartcart-v2-3';
 const ASSETS = ['./', './index.html', './app.css', './manifest.json', './src/ui/app.js', './src/ui/dom.js', './src/data/fb.js', './src/data/repo.js', './src/data/firebase-config.js', './src/core/money.js', './src/core/units.js', './src/core/categorize.js', './src/core/search.js', './src/core/barcode.js', './src/core/budget.js', './src/core/recommend.js', './src/data/products.js', './src/ui/scanner.js'];
 // versioned third-party libraries (Firebase, SheetJS, QR) — safe to serve from cache, lets the app open offline
 const LIB = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdn\.jsdelivr\.net\/npm\/xlsx@|cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs\/)/;
@@ -20,14 +20,16 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
-  const isDoc = e.request.mode === 'navigate' || e.request.destination === 'document' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
+  // app code too (js/css/json): modules must all come from the SAME version — a cached old module next to a new one breaks the app
+  const isDoc = e.request.mode === 'navigate' || e.request.destination === 'document' || /\/$|\.(html|js|mjs|css|json)$/.test(url.pathname);
   if (isDoc) {
     // network-first (updates show at once), but don't hang on a weak signal: after 4s use the saved copy
     const net = fetch(e.request).then(res => put(e.request, res));
-    const fallback = () => caches.match(e.request).then(r => r || caches.match('./index.html'));
+    const nav = e.request.mode === 'navigate';
+    const fallback = () => caches.match(e.request, { ignoreSearch: true }).then(r => r || (nav ? caches.match('./index.html') : undefined));
     e.respondWith(new Promise(resolve => {
       let done = false;
-      const t = setTimeout(() => fallback().then(r => { if (!done && r) { done = true; resolve(r); } }), 4000);
+      const t = nav ? setTimeout(() => fallback().then(r => { if (!done && r) { done = true; resolve(r); } }), 4000) : null;   // code files never time out → no version mixing
       net.then(res => { if (!done) { done = true; clearTimeout(t); resolve(res.ok ? res : fallback().then(r => r || res)); } })
          .catch(() => fallback().then(r => { if (!done) { done = true; clearTimeout(t); resolve(r || Response.error()); } }));
     }));
