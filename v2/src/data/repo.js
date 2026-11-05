@@ -230,3 +230,29 @@ export async function applyPantryMerge(hid, { updates, creates }) {
   for (const c of creates) b.set(doc(collection(db, 'households', hid, 'pantry')), clean({ ...c, addedBy: me().uid, addedByName: myName(), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
   await b.commit();
 }
+
+/* ---------- recipes & meal plans (Phase 7) ---------- */
+export const watchRecipes = (hid, cb, err) => onSnapshot(collection(db, 'households', hid, 'recipes'), (qs) => cb(qs.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name, 'he'))), err);
+export async function saveRecipe(hid, id, r) {
+  const ref = id ? doc(db, 'households', hid, 'recipes', id) : doc(collection(db, 'households', hid, 'recipes'));
+  const data = clean({ name: r.name, category: r.category || undefined, servings: r.servings, prepMinutes: Number.isInteger(r.prepMinutes) ? r.prepMinutes : null,
+    difficulty: r.difficulty || 'easy', ingredients: r.ingredients.slice(0, 80), steps: (r.steps || []).slice(0, 60), source: r.source || 'user', updatedAt: serverTimestamp() });
+  if (id) await updateDoc(ref, data); else await setDoc(ref, { ...data, createdBy: me().uid, createdByName: myName(), createdAt: serverTimestamp() });
+  return ref.id;
+}
+export const deleteRecipe = (hid, id) => deleteDoc(doc(db, 'households', hid, 'recipes', id));
+export async function addBasicRecipes(hid, list) {
+  const b = writeBatch(db);
+  for (const r of list) b.set(doc(collection(db, 'households', hid, 'recipes')), clean({ ...r, source: 'basic', createdBy: me().uid, createdByName: myName(), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await b.commit();
+}
+export const watchMealPlan = (hid, weekKey, cb, err) => onSnapshot(doc(db, 'households', hid, 'mealPlans', weekKey), (s) => cb(s.exists() ? s.data() : { days: {} }), err);
+export const saveMealPlan = (hid, weekKey, days) => setDoc(doc(db, 'households', hid, 'mealPlans', weekKey), { days, updatedAt: serverTimestamp(), updatedBy: me().uid });
+/** Apply {updates, creates} from mergeIntoList onto a list in one batch. */
+export async function applyListMerge(hid, lid, { updates, creates }) {
+  const b = writeBatch(db); let o = Date.now();
+  for (const u of updates) b.update(doc(db, 'households', hid, 'lists', lid, 'items', u.id), { qty: u.qty, updatedAt: serverTimestamp() });
+  for (const c of creates) b.set(doc(collection(db, 'households', hid, 'lists', lid, 'items')), clean({ ...c, currency: 'ILS', done: false, addedBy: me().uid, addedByName: myName(), order: o--, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await b.commit();
+  logActivity(hid, 'list.fromRecipes', { listId: lid, text: `${creates.length} חדשים, ${updates.length} עודכנו` });
+}
