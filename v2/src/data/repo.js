@@ -136,7 +136,9 @@ export const watchActivity = (hid, cb, err) => onSnapshot(query(collection(db, '
 
 /* ---------- migration from v1 ("סל"): copy, never delete the source ---------- */
 export async function importFromV1(hid, v1State, { migrateCategory, parseQty }) {
-  const lists = (v1State?.lists || []).filter((l) => l && Array.isArray(l.items));
+  // a v1 list already copied into this household (e.g. from the other phone of a synced v1 household) is skipped
+  const done = new Set((await getDocs(collection(db, 'households', hid, 'lists'))).docs.map((d) => d.data().migratedFrom).filter(Boolean));
+  const lists = (v1State?.lists || []).filter((l) => l && Array.isArray(l.items) && !(l.id && done.has('v1:' + l.id)));
   let nLists = 0, nItems = 0;
   for (const l of lists) {
     const lid = await createList(hid, { name: String(l.name || 'רשימה').slice(0, 60), icon: l.icon || '🛒', migratedFrom: 'v1:' + (l.id || '') });
