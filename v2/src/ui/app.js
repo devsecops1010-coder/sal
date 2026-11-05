@@ -14,6 +14,7 @@ import { openReceiptScan } from './receipts.js';
 import * as RC from '../core/recipes.js';
 import { BASIC_RECIPES } from '../core/basic-recipes.js';
 import { viewWhere } from './stores.js';
+import { parsePastedList, nameKey } from '../core/pastelist.js';
 
 const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], pantry: [], recipes: [], plan: { days: {} }, planWeek: null, recipeCat: null, lid: null, catFilter: null, showArchived: false };
 const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null, pantry: null, recipes: null, plan: null };
@@ -208,6 +209,7 @@ function editListSheet(l) {
 }
 function listMenu(l) {
   openSheet(l.name,
+    h('button', { class: 'btn ghost block', style: 'margin-bottom:8px', onclick: () => pasteSheet(l.id) }, '📋 הדבקת רשימה שלמה'),
     h('button', { class: 'btn ghost block', onclick: () => editListSheet(l) }, 'שינוי שם / אייקון'),
     h('button', { class: 'btn ghost block', style: 'margin-top:8px', onclick: async () => { closeSheet(); try { const id = await R.duplicateList(S.hid, l.id, l.name + ' (עותק)'); toast('הרשימה שוכפלה ✓'); go('list/' + id); } catch (e) { permErr(e); } } }, 'שכפול'),
     h('button', { class: 'btn ghost block', style: 'margin-top:8px', onclick: () => { closeSheet(); R.updateList(S.hid, l.id, { archived: !l.archived }).then(() => toast(l.archived ? 'הוחזרה מהארכיון' : 'הועברה לארכיון')).catch(permErr); } }, l.archived ? 'החזרה מהארכיון' : 'העברה לארכיון'),
@@ -264,7 +266,7 @@ function paintList() {
       cats.map((c) => h('button', { class: 'chip' + (S.catFilter === c ? ' on' : ''), onclick: () => { S.catFilter = c; paintList(); } }, cat(c).em + ' ' + cat(c).name))));
   }
   const shown = shopping && S.catFilter ? items.filter((i) => (i.cat || 'other') === S.catFilter || i.done) : items;
-  if (!total) body.append(h('div', { class: 'empty' }, h('div', { class: 'big' }, '🧺'), 'הרשימה ריקה. הוסף פריט למטה.'));
+  if (!total) body.append(h('div', { class: 'empty' }, h('div', { class: 'big' }, '🧺'), 'הרשימה ריקה. הוסף פריט למטה, או הדבק רשימה שלמה בבת אחת.', h('div', null, h('button', { class: 'btn', style: 'margin-top:12px', onclick: () => pasteSheet(lid) }, '📋 הדבקת רשימה'))));
   let lastCat = null;
   for (const it of shown) {
     const c = it.done ? '__done' : (it.cat || 'other');
@@ -305,10 +307,42 @@ function addBar(lid) {
     name.value = ''; qty.value = ''; upd(); name.focus();
   };
   name.addEventListener('input', upd); qty.addEventListener('input', upd);
+  // pasting several lines (or "חלב, לחם, ביצים") into the box → offer to add them all at once
+  name.addEventListener('paste', (e) => {
+    const t = e.clipboardData?.getData('text') || '';
+    if (parsePastedList(t).length >= 2) { e.preventDefault(); pasteSheet(lid, t); }
+  });
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
   qty.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
   const scan = h('button', { class: 'icon-btn', 'aria-label': 'סריקת ברקוד', onclick: () => openScanner((code) => addByBarcode(lid, code)) }, '📷');
   return h('div', { class: 'addbar' }, h('div', { class: 'addbox glass' }, sugg, h('div', { class: 'row' }, scan, name, qty, h('button', { class: 'go', onclick: add, 'aria-label': 'הוספה' }, '+')), prev));
+}
+/** Paste a whole list (WhatsApp, Notes…): one item per line, quantities understood, duplicates skipped. */
+function pasteSheet(lid, text = '') {
+  const ta = h('textarea', { class: 'input', rows: '9', 'aria-label': 'רשימה להדבקה', placeholder: 'פריט בכל שורה, למשל:\nחלב 2\nלחם\n2 ק"ג עגבניות\nביצים L 12\n\nאפשר גם: חלב, לחם, ביצים' });
+  ta.value = text;
+  const info = h('p', { class: 'hint', 'aria-live': 'polite' });
+  const btn = h('button', { class: 'btn block', style: 'margin-top:10px' }, 'הוספה');
+  const calc = () => {
+    const have = new Set(S.items.filter((i) => !i.done).map((i) => nameKey(i.name)));
+    const all = parsePastedList(ta.value), add = all.filter((i) => !have.has(nameKey(i.name)));
+    return { all, add };
+  };
+  const upd = () => {
+    const { all, add } = calc();
+    info.textContent = all.length ? `${add.length} פריטים יתווספו` + (all.length > add.length ? ` · ${all.length - add.length} כבר ברשימה` : '') : '';
+    btn.textContent = add.length ? `הוספת ${add.length} פריטים` : 'הוספה';
+    btn.disabled = !add.length;
+  };
+  btn.onclick = () => {
+    const { add } = calc(); if (!add.length) return;
+    for (const it of add) { R.addItem(S.hid, lid, { name: it.name, qty: it.qty, unit: it.unit, cat: guessCategory(it.name, learnOpts()) }); rememberName(it.name); }
+    closeSheet(); toast(`נוספו ${add.length} פריטים ✓`);
+  };
+  ta.addEventListener('input', upd);
+  const fromClip = navigator.clipboard?.readText ? h('button', { class: 'btn ghost block', style: 'margin-top:8px', onclick: async () => { try { const t = await navigator.clipboard.readText(); if (t) { ta.value = t; upd(); } } catch { toast('אין גישה ללוח. לחץ לחיצה ארוכה בתיבה ובחר "הדבק"'); } } }, 'הדבקה מהלוח') : null;
+  openSheet('הדבקת רשימה', h('p', { class: 'hint' }, 'מעתיקים רשימה מוואטסאפ, מהפתקים או מכל מקום, ומדביקים כאן. כל שורה היא פריט.'), ta, fromClip, info, btn);
+  upd();
 }
 const learnOpts = () => ({ learned: S.profile?.prefs?.learned || {}, custom: S.profile?.prefs?.customCats || [] });
 let histTimer = null;
