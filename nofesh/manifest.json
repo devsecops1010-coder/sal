@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "נופש · מלונות וצימרים",
+  "short_name": "נופש",
+  "description": "חיפוש מלונות וצימרים לפי אזור, מהזול ליקר",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#06111a",
+  "theme_color": "#0e8fa8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
