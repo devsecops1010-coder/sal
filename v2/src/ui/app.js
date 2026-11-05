@@ -148,7 +148,15 @@ function viewLogin() {
 }
 
 /* ---------------- onboarding ---------------- */
-function v1State() { try { const s = JSON.parse(localStorage.getItem('shoplist.v1')); return s?.lists?.some((l) => l.items?.length) ? s : null; } catch { return null; } }
+/** v1 ("סל") lists on this device that are not yet in the active household (same origin → same localStorage). */
+function v1State() {
+  try {
+    const s = JSON.parse(localStorage.getItem('shoplist.v1'));
+    const have = new Set((S.lists || []).map((l) => l.migratedFrom).filter(Boolean));
+    const lists = (s?.lists || []).filter((l) => l?.items?.length && !(l.id && have.has('v1:' + l.id)));
+    return lists.length ? { ...s, lists } : null;
+  } catch { return null; }
+}
 function viewOnboarding() {
   const name = h('input', { class: 'input', placeholder: 'למשל: הבית שלנו', value: 'הבית שלנו' });
   return h('div', null,
