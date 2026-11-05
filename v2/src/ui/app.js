@@ -13,6 +13,7 @@ import * as PAN from '../core/pantry.js';
 import { openReceiptScan } from './receipts.js';
 import * as RC from '../core/recipes.js';
 import { BASIC_RECIPES } from '../core/basic-recipes.js';
+import { viewWhere } from './stores.js';
 
 const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], pantry: [], recipes: [], plan: { days: {} }, planWeek: null, recipeCat: null, lid: null, catFilter: null, showArchived: false };
 const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null, pantry: null, recipes: null, plan: null };
@@ -45,7 +46,7 @@ onUser(async (u) => {
 });
 
 async function selectHousehold(hid) {
-  stopAll(); S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = []; S.pantry = []; S.recipes = []; S.plan = { days: {} }; S.planWeek = null;
+  stopAll(); S.lid = null; S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = []; S.pantry = []; S.recipes = []; S.plan = { days: {} }; S.planWeek = null;
   if (hid) {
     try { S.household = await R.getHousehold(hid); } catch (e) { S.household = null; }
     if (!S.household) { await R.forgetHousehold(hid).catch(() => {}); S.hid = null; }
@@ -87,6 +88,7 @@ function render() {
   if (r === 'list' && a) return viewList(a, false);
   if (r === 'shop' && a) return viewList(a, true);
   S.frame = null; releaseAwake();
+  if (r === 'where' && a) return viewWhereToShop(a);
   if (r === 'family') return mount(shell('משפחה', viewFamily()));
   if (r === 'budget') return mount(shell('תקציב', viewBudget()));
   if (r === 'pantry') return mount(shell('מזווה', viewPantry()));
@@ -99,7 +101,7 @@ function render() {
 }
 
 function shell(title, body, { back, sub, actions } = {}) {
-  const GROUP = { lists: ['list', 'shop'], budget: ['history'], meals: ['recipes', 'recipe'] };
+  const GROUP = { lists: ['list', 'shop', 'where'], budget: ['history'], meals: ['recipes', 'recipe'] };
   const tab = (id, e, label) => h('button', { class: 'tab' + (route()[0] === id || (GROUP[id] || []).includes(route()[0]) ? ' on' : ''), onclick: () => go(id), 'aria-label': label }, h('span', { class: 'e' }, e), label);
   return h('div', { class: 'app' },
     h('header', { class: 'top' },
@@ -205,8 +207,17 @@ function listMenu(l) {
 }
 
 /* ---------------- list + shopping mode ---------------- */
+function watchListItems(lid) {
+  if (S.lid !== lid) { stop('items'); S.lid = lid; S.items = []; S.catFilter = null; S.itemsLoaded = false; subs.items = R.watchItems(S.hid, lid, (it) => { const first = !S.itemsLoaded; S.items = it; S.itemsLoaded = true; if (['list', 'shop'].includes(route()[0])) paintList(); else if (first && route()[0] === 'where') render(); }, permErr); }
+}
+function viewWhereToShop(lid) {
+  watchListItems(lid);
+  const l = S.lists.find((x) => x.id === lid);
+  mount(shell('לאן כדאי לקנות?', S.itemsLoaded ? viewWhere({ items: () => S.items, linkItem: async (it, code) => { R.updateItem(S.hid, lid, it.id, { barcode: code }).catch(permErr); } }) : h('p', { class: 'hint' }, 'טוען…'),
+    { back: 'list/' + lid, sub: l ? (l.icon || '🛒') + ' ' + l.name : undefined }));
+}
 function viewList(lid, shopping) {
-  if (S.lid !== lid) { stop('items'); S.lid = lid; S.items = []; S.catFilter = null; subs.items = R.watchItems(S.hid, lid, (it) => { S.items = it; if (['list', 'shop'].includes(route()[0])) paintList(); }, permErr); }
+  watchListItems(lid);
   if (!S.frame || S.frame.lid !== lid || S.frame.shopping !== shopping) {
     const body = h('div', { class: shopping ? 'shop' : '' });
     const actions = shopping ? h('button', { class: 'btn sm', onclick: () => go('list/' + lid) }, 'יציאה') : h('button', { class: 'icon-btn', 'aria-label': 'אפשרויות', onclick: () => { const l = S.lists.find((x) => x.id === lid); if (l) listMenu(l); } }, '⋯');
@@ -234,7 +245,9 @@ function paintList() {
       h('div', { class: 'row', style: 'justify-content:space-between;margin-bottom:6px' }, h('b', null, `${done} מתוך ${total} · ${pct}%`), h('span', { class: 'hint' }, total - done ? `נותרו ${total - done}` : total ? 'הכל נאסף ✓' : '')),
       h('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `width:${pct}%` })),
       priced ? h('div', { class: 'hint', style: 'margin-top:6px' }, shopping ? `בעגלה: ${format(inCart)} · משוער לכל הרשימה: ${format(est)}` : `עלות משוערת: ${format(est)}`, priced < total ? ` (מחיר ל-${priced} מתוך ${total})` : '') : null),
-    shopping ? null : h('button', { class: 'btn sm', onclick: () => go('shop/' + lid) }, 'מצב קנייה')));
+    shopping ? null : h('div', { style: 'display:flex;flex-direction:column;gap:6px' },
+      h('button', { class: 'btn sm', onclick: () => go('shop/' + lid) }, 'מצב קנייה'),
+      total ? h('button', { class: 'btn sm ghost', onclick: () => go('where/' + lid) }, '🔎 איפה זול?') : null)));
 
   if (shopping) {
     const cats = [...new Set(items.filter((i) => !i.done).map((i) => i.cat || 'other'))];
