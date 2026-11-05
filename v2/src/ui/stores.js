@@ -1,9 +1,10 @@
-// Phase 10 UI — "לאן כדאי לי ללכת לקניות?" Uses official price-transparency data via the price service and the
-// pure engine in core/recommend.js. Every price shows its source and publication time; nothing is invented:
-// items the user did not link to an exact product (barcode) are listed as "not compared", never guessed.
+// Phase 10 UI — "לאן כדאי לי ללכת לקניות?" Official price-transparency data via the price service.
+// Every list line is matched AUTOMATICALLY by name to a real product in each branch (server /api/match); the user may
+// pin an exact product (barcode) but never has to. Two views: overall (whole basket per branch) and per item.
+// Nothing is invented: a line with no fitting product in a branch is shown as missing there.
 import { h, toast, openSheet, closeSheet } from './dom.js';
 import * as P from '../data/prices.js';
-import { recommend, splitOptions } from '../core/recommend.js';
+import { compareAuto } from '../core/automatch.js';
 import { format } from '../core/money.js';
 import { norm } from '../core/categorize.js';
 import { formatQty } from '../core/units.js';
@@ -39,19 +40,19 @@ const promoText = (pr) => !pr ? '' : pr.description || (pr.count ? `${pr.count} 
  */
 export function viewWhere(ctx) {
   const root = h('div', { class: 'where' });
-  const st = { result: null, busy: false, msg: '' };
+  const st = { result: null, busy: false, msg: '', tab: 'all', showPins: false };
 
   function paint() {
     const p = prefs();
     const items = ctx.items().filter((i) => !i.done);
     const pm = prodMap();
-    const linked = items.map((i) => ({ item: i, code: i.barcode || pm[norm(i.name)]?.code || null, viaMemory: !i.barcode && !!pm[norm(i.name)], label: pm[norm(i.name)]?.name }));
+    const pinned = (i) => i.barcode || pm[norm(i.name)]?.code || null;
     const nodes = [];
 
     nodes.push(h('div', { class: 'card glass' },
-      h('div', { class: 'row', style: 'justify-content:space-between' }, h('b', null, 'הסניפים להשוואה'), h('button', { class: 'btn sm', onclick: () => chooseBranches(paint) }, p.branches.length ? 'שינוי' : 'בחירת סניפים')),
+      h('div', { class: 'row', style: 'justify-content:space-between' }, h('b', null, 'הסניפים להשוואה'), h('button', { class: 'btn sm', onclick: () => chooseBranches(() => { st.result = null; paint(); }) }, p.branches.length ? 'שינוי' : 'בחירת סניפים')),
       p.branches.length
-        ? h('div', { class: 'chips', style: 'flex-wrap:wrap;margin-top:8px' }, p.branches.map((b, i) => h('span', { class: 'chip' + (i === 0 ? ' on' : '') }, (i === 0 ? '⭐ ' : '') + b.name + ' · ' + (b.city || ''))))
+        ? h('div', { class: 'chips', style: 'flex-wrap:wrap;margin-top:8px' }, p.branches.map((b, i) => h('span', { class: 'chip' + (i === 0 ? ' on' : '') }, (i === 0 ? '⭐ ' : '') + bname(b) + ' · ' + (b.city || ''))))
         : h('p', { class: 'hint' }, 'בחרו עד 6 סניפים באזור שלכם. הסניף הראשון נחשב "הסניף הרגיל שלי".'),
       [...new Map(p.branches.map((b) => [chainOf(b), b.chainName || chainOf(b)])).entries()].map(([cid, cname]) =>
         h('label', { class: 'row', style: 'margin-top:8px;gap:8px;align-items:center' },
@@ -59,93 +60,116 @@ export function viewWhere(ctx) {
             const cur = prefs(); setPrefs({ ...cur, clubs: e.target.checked ? [...new Set([...cur.clubs, cid])] : cur.clubs.filter((x) => x !== cid) }); st.result = null; paint(); } }),
           h('span', { class: 'hint' }, `יש לי מועדון / כרטיס של ${cname} (כולל מבצעי מועדון בחישוב)`)))));
 
-    // products
-    const unl = linked.filter((l) => !l.code);
-    nodes.push(h('div', { class: 'card glass' },
-      h('b', null, `מוצרים ברשימה (${linked.length - unl.length} מתוך ${linked.length} מקושרים למוצר מדויק)`),
-      h('p', { class: 'hint' }, 'משווים רק מוצר זהה (לפי ברקוד). פריט בלי מוצר מקושר לא נכלל בהשוואה, כדי לא להשוות תפוחים לתפוזים.'),
-      linked.length ? linked.map((l) => h('div', { class: 'row', style: 'justify-content:space-between;padding:6px 0;border-top:1px solid var(--brd)' },
-        h('div', null, h('div', null, l.item.name, l.item.qty ? ' · ' + (formatQty(l.item.qty, l.item.unit) || '') : ''),
-          h('div', { class: 'hint' }, l.code ? (l.viaMemory ? `✓ לפי בחירה קודמת: ${l.label}` : `✓ ברקוד ${l.code}`) : 'לא נבחר מוצר')),
-        h('button', { class: 'btn sm ghost', disabled: !p.branches.length, onclick: () => pickProduct(l.item, paint) }, l.code ? 'החלפה' : 'בחירת מוצר')))
-        : h('p', { class: 'hint' }, 'אין פריטים פתוחים ברשימה.')));
-
-    const codes = [...new Set(linked.filter((l) => l.code).map((l) => l.code))];
-    nodes.push(h('button', { class: 'btn block', disabled: st.busy || !p.branches.length || !codes.length, onclick: () => compare(linked) },
-      st.busy ? 'מחשב…' : '🔎 לאן כדאי לי ללכת לקניות?'));
+    nodes.push(h('button', { class: 'btn block', disabled: st.busy || !p.branches.length || !items.length, onclick: () => compare(items) },
+      st.busy ? 'מחשב…' : `🔎 השוואת מחירים לכל הרשימה (${items.length} מוצרים)`));
+    if (!items.length) nodes.push(h('p', { class: 'hint', style: 'text-align:center' }, 'אין פריטים פתוחים ברשימה.'));
     if (st.msg) nodes.push(h('p', { class: 'hint', role: 'status', style: 'text-align:center' }, st.msg));
-    if (st.result) nodes.push(...renderResult(st.result, linked));
+    if (st.result) nodes.push(...renderResult(st.result));
+
+    // optional: pin an exact product for a line (not needed for the comparison)
+    const pins = items.filter(pinned).length;
+    nodes.push(h('div', { class: 'card glass' },
+      h('button', { class: 'btn sm ghost', 'aria-expanded': String(st.showPins), onclick: () => { st.showPins = !st.showPins; paint(); } },
+        (st.showPins ? '▾ ' : '▸ ') + `קיבוע מוצר מדויק (לא חובה${pins ? ` · ${pins} קבועים` : ''})`),
+      st.showPins ? [h('p', { class: 'hint' }, 'ההשוואה מתאימה מוצר לכל שורה לפי השם. אם חשוב לכם מותג או גודל מסוים, קבעו אותו כאן והוא ישמש בכל הסניפים.'),
+        items.map((i) => h('div', { class: 'row', style: 'justify-content:space-between;padding:6px 0;border-top:1px solid var(--brd)' },
+          h('div', null, h('div', null, i.name), h('div', { class: 'hint' }, pinned(i) ? `✓ ${pm[norm(i.name)]?.name || 'ברקוד ' + pinned(i)}` : 'אוטומטי לפי השם')),
+          h('button', { class: 'btn sm ghost', disabled: !p.branches.length, onclick: () => pickProduct(i, () => { st.result = null; paint(); }) }, pinned(i) ? 'החלפה' : 'קיבוע')))] : null));
     root.replaceChildren(...nodes);
   }
 
-  async function compare(linked) {
+  async function compare(items) {
     const p = prefs();
-    const withCode = linked.filter((l) => l.code);
-    st.busy = true; st.msg = 'מביא מחירים עדכניים…'; st.result = null; paint();
+    const pm = prodMap();
+    st.busy = true; st.msg = 'מתאים מוצרים ומביא מחירים עדכניים…'; st.result = null; paint();
     try {
-      const r = await P.prices(p.branches.map((b) => b.id), [...new Set(withCode.map((l) => l.code))], {
+      const req = items.map((i) => ({ id: i.id, name: i.name, unit: i.unit || 'unit', code: i.barcode || pm[norm(i.name)]?.code || undefined }));
+      const r = await P.match(p.branches.map((b) => b.id), req, {
         onWait: (x) => { st.msg = 'טוען קבצי מחירים מהרשת (בפעם הראשונה לסניף זה לוקח עד 2 דקות)…' + ` ${x.branches.filter((b) => b.ok).length}/${x.branches.length} מוכנים`; paint(); } });
       const branches = p.branches.map((b) => { const s = r.branches.find((x) => x.id === b.id); return { ...b, ...(s || {}), ok: !!s?.ok }; });
       const okB = branches.filter((b) => b.ok);
-      const basket = withCode.map((l) => ({ id: l.item.id, name: l.item.name, qty: l.item.qty || 1, unit: l.item.unit || 'unit', barcode: l.code, productKey: l.code }));
-      const ectx = { now: new Date(), userClubs: p.clubs.map((c) => c + '-club'), weights: { price: 1 }, minCoverage: p.minCoverage, maxStaleHours: 48, preferredBranchId: p.branches[0]?.id };
-      const rec = recommend(basket, okB, r.rows, ectx);
-      const split = okB.length >= 2 ? splitOptions(basket, okB, r.rows, ectx).slice(0, 1) : [];
-      st.result = { rec, split, branches, basket, rows: r.rows, at: new Date() };
+      const cmp = compareAuto(items, okB, r.items, { now: new Date(), userClubs: p.clubs.map((c) => c + '-club'), preferredBranchId: p.branches[0]?.id });
+      st.result = { cmp, branches, okB };
       st.msg = '';
     } catch (e) {
       st.msg = e.message || 'שגיאה';
     } finally { st.busy = false; paint(); }
   }
 
-  function renderResult({ rec, split, branches, basket }, linked) {
+  function renderResult({ cmp, branches, okB }) {
     const out = [];
     const failed = branches.filter((b) => !b.ok);
-    if (failed.length) out.push(h('p', { class: 'hint' }, '⚠️ לא התקבלו מחירים מ: ' + failed.map((b) => b.name + (b.error ? ` (${b.error})` : '')).join(', ')));
-    const notCompared = linked.filter((l) => !l.code);
-    if (rec.insufficient) {
-      out.push(h('div', { class: 'card glass' }, h('b', null, 'אין המלצה'), h('p', { class: 'hint' }, rec.reason)));
-    } else {
-      const best = rec.bestValue;
-      out.push(h('div', { class: 'card glass', style: 'border:2px solid var(--accent)' },
-        h('div', { class: 'hint' }, '🏆 הכי משתלם לסל שלך'),
-        h('div', { class: 'total' }, bname(best.branch)),
-        h('div', null, `${format(best.total)} · ${best.lines.length} מתוך ${basket.length} מוצרים`),
-        rec.vsPreferred && rec.vsPreferred.saving > 0 ? h('div', { class: 'badge', style: 'margin-top:6px' }, `חיסכון של ${format(rec.vsPreferred.saving)} לעומת ${bname(rec.vsPreferred.preferred)} (על ${rec.vsPreferred.comparedItems} מוצרים זהים)`) : null,
-        h('ul', { class: 'hint', style: 'margin:8px 0 0;padding-inline-start:18px' }, (best.explain || []).map((x) => h('li', null, x)))));
-      if (split.length) {
-        const s = split[0];
-        out.push(h('div', { class: 'card glass' }, h('b', null, '✂️ פיצול בין שני סניפים'),
-          h('p', { class: 'hint' }, `חוסך ${format(s.grossSaving)} על ${s.assignment.length} מוצרים לעומת ${s.baseline.branch.name}. ${s.costUnknown ? 'עלות הנסיעה הנוספת לא ידועה ולא הופחתה — כדאי רק אם הסניפים קרובים.' : ''}`),
-          s.stores.map((id) => { const b = branches.find((x) => x.id === id); const its = s.assignment.filter((a) => a.branchId === id); return h('div', { class: 'hint' }, `${b?.name}: ${its.map((a) => a.name).join(', ')}`); })));
-      }
-    }
-    for (const r of rec.ranking) out.push(branchCard(r));
-    if (notCompared.length) out.push(h('p', { class: 'hint' }, `לא נכללו בהשוואה (לא נבחר מוצר): ${notCompared.map((l) => l.item.name).join(', ')}`));
-    out.push(h('p', { class: 'hint', style: 'margin-top:10px' }, 'מקור: קבצי המחירים הרשמיים שהרשתות מפרסמות לפי חוק שקיפות מחירים. רשתות זמינות: שופרסל, רמי לוי, אושר עד, טיב טעם. מבצעים בתנאי קנייה מינימלית ("מעל 75 ש״ח") מוצגים אבל לא מחושבים. המחיר בקופה עשוי להשתנות; מבצעים בקופון לא נכללים. המרחק לסניפים לא ידוע לנו (הרשת לא מפרסמת מיקום מדויק).'));
+    if (failed.length) out.push(h('p', { class: 'hint' }, '⚠️ לא התקבלו מחירים מ: ' + failed.map((b) => bname(b) + (b.error ? ` (${b.error})` : '')).join(', ')));
+    if (!cmp.best) { out.push(h('div', { class: 'card glass' }, h('b', null, 'לא נמצאו מוצרים מתאימים'), h('p', { class: 'hint' }, 'נסו שמות מוצרים פשוטים יותר (למשל "חלב 3%", "עגבניות").'))); return out; }
+    out.push(h('div', { class: 'seg', role: 'tablist', style: 'display:flex;gap:6px;margin:4px 0' },
+      [['all', 'השוואה כללית'], ['item', 'השוואה פרטנית']].map(([k, t]) => h('button', { class: 'btn sm ' + (st.tab === k ? '' : 'ghost'), role: 'tab', 'aria-selected': String(st.tab === k), style: 'flex:1', onclick: () => { st.tab = k; paint(); } }, t))));
+    out.push(...(st.tab === 'all' ? overall(cmp) : perItem(cmp, okB)));
+    out.push(h('p', { class: 'hint', style: 'margin-top:10px' }, 'איך זה עובד: לכל שורה ברשימה נבחר אוטומטית המוצר המתאים ביותר לשם. בכל סניף נבדק קודם אותו מוצר בדיוק (אותו ברקוד); אם הוא לא נמכר שם, נלקח המוצר הדומה ביותר באותו גודל, ומסומן ≈. הדירוג מחושב רק על מוצרים שנמצאו בכל הסניפים. מקור: קבצי המחירים הרשמיים לפי חוק שקיפות מחירים. מבצעים בתנאי קנייה מינימלית או בקופון לא מחושבים. המחיר בקופה עשוי להשתנות.'));
     return out;
   }
 
-  function branchCard(r) {
+  function overall(c) {
+    const out = [];
+    const best = c.best;
+    out.push(h('div', { class: 'card glass', style: 'border:2px solid var(--accent)' },
+      h('div', { class: 'hint' }, '🏆 הכי משתלם לרשימה שלך'),
+      h('div', { class: 'total' }, bname(best.branch)),
+      h('div', null, `${format(best.commonTotal)} על ${c.commonCount} מוצרים שנמצאו בכל הסניפים`),
+      c.vsPreferred && c.vsPreferred.saving > 0 ? h('div', { class: 'badge', style: 'margin-top:6px' }, `חוסך ${format(c.vsPreferred.saving)} לעומת ${bname(c.vsPreferred.preferred)}`) : null,
+      c.vsWorst && c.vsWorst.saving > 0 && c.vsWorst.branch.id !== c.vsPreferred?.preferred?.id ? h('div', { class: 'hint', style: 'margin-top:4px' }, `ו-${format(c.vsWorst.saving)} לעומת היקר ביותר (${bname(c.vsWorst.branch)})`) : null,
+      best.missing.length ? h('div', { class: 'hint', style: 'margin-top:4px' }, 'לא נמצאו שם: ' + best.missing.map((i) => i.name).join(', ')) : null));
+    if (c.mix && c.mix.saving > 0 && c.mix.stores.length > 1) {
+      out.push(h('div', { class: 'card glass' }, h('b', null, '✂️ לקנות כל מוצר איפה שהכי זול'),
+        h('p', { class: 'hint' }, `${format(c.mix.total)}: עוד ${format(c.mix.saving)} חיסכון, אבל צריך ללכת ל-${c.mix.stores.length} סניפים.`),
+        c.mix.stores.map((id) => { const r = c.perBranch.find((x) => x.branch.id === id); return h('div', { class: 'hint' }, `${bname(r.branch)}: ${c.mix.assignment.filter((a) => a.branchId === id).map((a) => a.item.name).join(', ')}`); })));
+    }
+    for (const r of c.ranking) out.push(branchCard(r, c));
+    return out;
+  }
+
+  function branchCard(r, c) {
     const b = r.branch; const nav = navUrl(b);
     const det = h('div', { style: 'display:none;margin-top:8px' },
-      r.lines.map((l) => h('div', { class: 'row', style: 'justify-content:space-between;font-size:13px;padding:3px 0' },
-        h('span', null, l.productName, l.qty !== 1 ? ` ×${formatQty(l.qty, 'unit') || l.qty}` : ''),
-        h('span', null, l.promoApplied ? h('s', { class: 'hint' }, format(l.regular)) : null, ' ', format(l.effective),
-          l.promo ? h('div', { class: 'hint' }, (l.promo.eligible === false ? '(מועדון) ' : '') + promoText(l.promo)) : null))),
-      r.missing.length ? h('p', { class: 'hint' }, 'חסרים בסניף: ' + r.missing.map((m) => m.name).join(', ')) : null,
-      h('p', { class: 'hint' }, `מחירים נכונים ל-${when(r.oldestUpdate || b.pricesPublishedAt)} · ${b.source || ''}`));
-    return h('div', { class: 'card glass' + (r.eligible ? '' : ' muted') },
+      r.lines.map((l) => h('div', { class: 'row', style: 'justify-content:space-between;font-size:13px;padding:3px 0;gap:8px' },
+        h('span', null, h('b', null, l.item.name), ' ', h('span', { class: 'hint' }, (l.similar ? '≈ ' : '') + l.row.name + (l.qty !== 1 ? ` ×${formatQty(l.qty, 'unit') || l.qty}${l.row.priceUnit === 'kg' ? ' ק"ג' : ''}` : '') + (l.approx ? ' (כמות משוערת)' : '') + (l.promo ? ' · 🏷️ ' + (l.promo.eligible === false ? '(מועדון) ' : '') + promoText(l.promo) : ''))),
+        h('span', { style: 'white-space:nowrap' }, l.promoApplied ? h('s', { class: 'hint' }, format(l.regular)) : null, ' ', format(l.effective)))),
+      r.missing.length ? h('p', { class: 'hint' }, 'לא נמצאו בסניף: ' + r.missing.map((m) => m.name).join(', ')) : null,
+      h('p', { class: 'hint' }, `מחירים נכונים ל-${when(b.pricesPublishedAt)} · ${b.source || ''}`));
+    return h('div', { class: 'card glass' + (r.coverage >= 0.6 ? '' : ' muted') },
       h('div', { class: 'row', style: 'justify-content:space-between' },
         h('div', null, h('b', null, bname(b)), h('div', { class: 'hint' }, [b.address, b.city].filter(Boolean).join(', '))),
-        h('div', { style: 'text-align:left' }, h('b', null, format(r.total)), h('div', { class: 'hint' }, `${r.lines.length}/${r.lines.length + r.missing.length} מוצרים`))),
+        h('div', { style: 'text-align:left' }, h('b', null, format(r.commonTotal)), h('div', { class: 'hint' }, `נמצאו ${r.lines.length}/${c.itemCount} · כולם: ${format(r.total)}`))),
+      r.similar ? h('span', { class: 'badge' }, `≈ ${r.similar} מוצרים דומים (לא זהים)`) : null,
       r.promoSavings > 0 ? h('span', { class: 'badge' }, `מבצעים: −${format(r.promoSavings)}`) : null,
-      !r.eligible ? h('span', { class: 'badge warn' }, 'חסרים מוצרים רבים, לא מומלץ') : null,
+      r.coverage < 0.6 ? h('span', { class: 'badge warn' }, 'חסרים מוצרים רבים') : null,
       h('div', { class: 'row', style: 'gap:8px;margin-top:8px' },
         h('button', { class: 'btn sm ghost', onclick: (e) => { const open = det.style.display === 'none'; det.style.display = open ? '' : 'none'; e.target.textContent = open ? 'הסתרה' : 'פירוט'; } }, 'פירוט'),
         h('a', { class: 'btn sm ghost', href: nav.waze, target: '_blank', rel: 'noopener' }, 'Waze'),
         h('a', { class: 'btn sm ghost', href: nav.google, target: '_blank', rel: 'noopener' }, 'מפות')),
       det);
+  }
+
+  function perItem(c, okB) {
+    const th = (t, extra = '') => h('th', { style: 'padding:6px;text-align:right;font-size:12px;vertical-align:bottom;' + extra }, t);
+    const rows = c.perItem.map((p) => h('tr', { style: 'border-top:1px solid var(--brd)' },
+      h('td', { style: 'padding:6px;font-weight:600;position:sticky;right:0;background:var(--card2,var(--card));min-width:90px' }, p.item.name,
+        p.item.qty && p.item.qty !== 1 ? h('div', { class: 'hint' }, formatQty(p.item.qty, p.item.unit)) : null),
+      okB.map((b) => {
+        const x = p.cells[b.id];
+        if (!x) return h('td', { class: 'hint', style: 'padding:6px;text-align:center' }, '—');
+        const win = p.cheapest === b.id && p.foundIn > 1;
+        return h('td', { style: 'padding:6px;vertical-align:top;min-width:96px' + (win ? ';background:rgba(34,197,94,.14);border-radius:8px' : '') },
+          h('div', { style: 'white-space:nowrap' + (win ? ';font-weight:800' : '') }, (x.similar ? '≈ ' : '') + format(x.effective), x.promoApplied ? ' 🏷️' : ''),
+          h('div', { class: 'hint', style: 'font-size:11px;line-height:1.25' }, x.row.name + (x.approx ? ' · כמות משוערת' : '')));
+      })));
+    const foot = h('tr', { style: 'border-top:2px solid var(--brd)' }, h('td', { style: 'padding:6px;font-weight:700;position:sticky;right:0;background:var(--card2,var(--card))' }, `סה״כ (${c.commonCount} משותפים)`),
+      okB.map((b) => { const r = c.perBranch.find((x) => x.branch.id === b.id); return h('td', { style: 'padding:6px;font-weight:700' + (c.best.branch.id === b.id ? ';color:var(--accent)' : '') }, format(r.commonTotal)); }));
+    return [h('div', { class: 'card glass', style: 'padding:6px' },
+      h('p', { class: 'hint', style: 'margin:4px 6px' }, 'ירוק = הכי זול לאותו מוצר · ≈ = מוצר דומה, לא זהה · 🏷️ = כולל מבצע · — = לא נמצא בסניף'),
+      h('div', { style: 'overflow-x:auto;-webkit-overflow-scrolling:touch' },
+        h('table', { style: 'border-collapse:collapse;width:100%;font-size:13px' },
+          h('thead', null, h('tr', null, th('מוצר', 'position:sticky;right:0;background:var(--card2,var(--card))'), okB.map((b) => th(bname(b))))),
+          h('tbody', null, rows, foot))))];
   }
 
   function pickProduct(item, done) {
