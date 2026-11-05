@@ -289,7 +289,9 @@ function paintList() {
 }
 
 function addBar(lid) {
-  const name = h('input', { placeholder: 'מה צריך לקנות?', autocomplete: 'off', enterkeyhint: 'done', 'aria-label': 'שם מוצר', maxlength: '120' });
+  // a 1-row textarea, not an <input>: inputs silently turn pasted line breaks into spaces (Android clipboard bar, iOS),
+  // which glued a whole pasted list into one item
+  const name = h('textarea', { class: 'name', rows: '1', placeholder: 'מה צריך לקנות?', autocomplete: 'off', enterkeyhint: 'done', 'aria-label': 'שם מוצר', maxlength: '4000' });
   const qty = h('input', { class: 'qty', placeholder: 'כמות', 'aria-label': 'כמות', maxlength: '30' });
   const prev = h('div', { class: 'preview', 'aria-live': 'polite' });
   const sugg = h('div', { class: 'chips' });
@@ -300,19 +302,27 @@ function addBar(lid) {
     sugg.replaceChildren(...(n.length >= 2 ? search(n, history(), { limit: 6 }).filter((x) => x.name !== n) : []).map((x) => h('button', { class: 'chip', onclick: () => { name.value = x.name; upd(); name.focus(); } }, x.name)));
   };
   const add = () => {
-    const n = name.value.trim(); if (!n) return name.focus();
+    const n = name.value.replace(/\s+/g, ' ').trim().slice(0, 120); if (!n) return name.focus();
     const q = parseQty(qty.value);
     R.addItem(S.hid, lid, { name: n, qty: q.qty ?? 1, unit: q.unit, raw: q.qty === null ? qty.value.trim() : undefined, cat: guessCategory(n, learnOpts()) });
     rememberName(n);
     name.value = ''; qty.value = ''; upd(); name.focus();
   };
-  name.addEventListener('input', upd); qty.addEventListener('input', upd);
+  name.addEventListener('input', () => {
+    if (/\n/.test(name.value)) {   // text with line breaks arrived (paste of any kind, keyboard clipboard chip, dictation)
+      const t = name.value;
+      if (parsePastedList(t).length >= 2) { name.value = ''; upd(); return pasteSheet(lid, t); }
+      name.value = t.replace(/\s*\n\s*/g, ' ');
+    }
+    upd();
+  });
+  qty.addEventListener('input', upd);
   // pasting several lines (or "חלב, לחם, ביצים") into the box → offer to add them all at once
   name.addEventListener('paste', (e) => {
     const t = e.clipboardData?.getData('text') || '';
     if (parsePastedList(t).length >= 2) { e.preventDefault(); pasteSheet(lid, t); }
   });
-  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); add(); } });
   qty.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
   const scan = h('button', { class: 'icon-btn', 'aria-label': 'סריקת ברקוד', onclick: () => openScanner((code) => addByBarcode(lid, code)) }, '📷');
   return h('div', { class: 'addbar' }, h('div', { class: 'addbox glass' }, sugg, h('div', { class: 'row' }, scan, name, qty, h('button', { class: 'go', onclick: add, 'aria-label': 'הוספה' }, '+')), prev));
