@@ -19,7 +19,7 @@ const normTok = (s) => String(s).trim().toLowerCase()
 const ALIASES = new Map(Object.entries({
   unit: 'unit', units: 'unit', pc: 'unit', pcs: 'unit', "יח'": 'unit', 'יח': 'unit', 'יחידה': 'unit', 'יחידות': 'unit',
   pack: 'pack', 'חבילה': 'pack', 'חבילות': 'pack', 'אריזה': 'pack', 'אריזות': 'pack', 'מארז': 'pack', 'שקית': 'pack', 'קרטון': 'pack', 'בקבוק': 'pack', 'בקבוקים': 'pack', 'פחית': 'pack', 'פחיות': 'pack',
-  g: 'g', gr: 'g', gram: 'g', grams: 'g', 'גרם': 'g', "גר'": 'g', 'גר': 'g', "ג'": 'g',
+  g: 'g', gr: 'g', gram: 'g', grams: 'g', 'גרם': 'g', "גר'": 'g', 'גר': 'g', "ג'": 'g', 'ג': 'g',
   kg: 'kg', kilo: 'kg', 'ק"ג': 'kg', 'קג': 'kg', 'קילו': 'kg', 'קילוגרם': 'kg',
   ml: 'ml', 'מ"ל': 'ml', 'מל': 'ml', 'מיליליטר': 'ml',
   l: 'l', lt: 'l', liter: 'l', litre: 'l', 'ליטר': 'l', 'ליטרים': 'l', "ל'": 'l',
@@ -100,4 +100,18 @@ export function lineTotal(priceAgorot, qty, { priceUnit = 'unit', qtyUnit = 'uni
     try { q = convert(qty, qtyUnit, priceUnit); } catch { return null; }
   }
   return multiply(priceAgorot, q);
+}
+
+/** Package size from product data ("80 ג", "400 g e", "1.5L", "6 x 330 ml", "1 ליטר"). Returns {size, unit} or null. */
+export function parseSize(text) {
+  const s = String(text ?? '').trim().toLowerCase().replace(/,/g, '.');
+  if (!s) return null;
+  const multi = s.match(/^(\d+)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*([^\s\d]+)/);
+  if (multi) { const u = normalizeUnit(multi[3]); return u && u !== 'unit' ? { size: round3(+multi[1] * +multi[2]), unit: u } : null; }
+  const m = s.match(/(\d+(?:\.\d+)?)\s*([^\s\d.]+[.]?)/);
+  if (!m) return null;
+  let u = normalizeUnit(m[2]);
+  if (!u && /^cl/.test(m[2])) return { size: round3(+m[1] * 10), unit: 'ml' };
+  if (!u || u === 'unit' || u === 'pack') return null;
+  return { size: round3(+m[1]), unit: u };
 }
