@@ -205,25 +205,28 @@ export function viewWhere(ctx) {
 /** Branch picker: city → branches (max 6). First chosen = "my usual branch". */
 export function chooseBranches(done) {
   let chosen = [...prefs().branches];
-  const cityIn = h('input', { class: 'input', placeholder: 'עיר (למשל: הרצליה)', list: 'sc-cities', 'aria-label': 'עיר' });
+  const cityIn = h('input', { class: 'input', placeholder: 'עיר או שם סניף (למשל: הרצליה)', list: 'sc-cities', 'aria-label': 'עיר' });
   const dl = h('datalist', { id: 'sc-cities' });
   const list = h('div');
   const sel = h('div', { class: 'chips', style: 'flex-wrap:wrap' });
   let cities = [];
   const paintSel = () => sel.replaceChildren(...chosen.map((b, i) => h('button', { class: 'chip on', 'aria-label': 'הסרת ' + b.name, onclick: () => { chosen = chosen.filter((x) => x.id !== b.id); paintSel(); } }, (i === 0 ? '⭐ ' : '') + b.name + ' ✕')));
   const showCity = async () => {
-    const c = cities.find((x) => x.name === cityIn.value.trim());
-    if (!c) return;
+    const v = cityIn.value.trim();
+    const c = cities.find((x) => x.name === v);
+    if (!c && v.length < 2) return;
     list.replaceChildren(h('p', { class: 'hint' }, 'טוען סניפים…'));
     try {
-      const bs = await P.branchesInCity(c.code);
+      // a town → all its branches; otherwise search branch name / address (some chains do not publish the town)
+      const bs = c ? await P.branchesInCity(c.code) : await P.findBranches(v);
+      if (!bs.length) return list.replaceChildren(h('p', { class: 'hint' }, 'לא נמצאו סניפים. נסו שם עיר או שם סניף אחר.'));
       list.replaceChildren(...bs.map((b) => h('label', { class: 'row', style: 'gap:8px;padding:6px 0;align-items:center' },
         h('input', { type: 'checkbox', checked: chosen.some((x) => x.id === b.id), onchange: (e) => {
           if (e.target.checked) { if (chosen.length >= MAX_BRANCHES) { e.target.checked = false; return toast(`עד ${MAX_BRANCHES} סניפים`); } chosen.push({ id: b.id, name: b.name, city: b.city, address: b.address, chainName: b.chainName }); }
           else chosen = chosen.filter((x) => x.id !== b.id);
           paintSel();
         } }),
-        h('span', null, h('b', null, b.chainName + ' ' + b.name), h('div', { class: 'hint' }, b.address || '')))));
+        h('span', null, h('b', null, b.chainName + ' ' + b.name), h('div', { class: 'hint' }, [b.address, c ? null : b.city].filter(Boolean).join(', '))))));
     } catch (e) { list.replaceChildren(h('p', { class: 'hint' }, e.message)); }
   };
   cityIn.addEventListener('change', showCity);
