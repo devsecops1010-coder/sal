@@ -36,7 +36,16 @@ getRedirectResult(auth).catch(() => {});
 
 export const onUser = (cb) => onAuthStateChanged(auth, cb);
 
+// Google sign-in is allowed only on the Firebase-authorized domains (github.io). On link3.co.il the button moves the user
+// to the same app on github.io, where ?glogin=1 starts the Google sign-in right away.
+const LINK3 = ['link3.co.il', 'www.link3.co.il'].includes(location.hostname);
+if (!LINK3 && new URLSearchParams(location.search).get('glogin') === '1') {
+  history.replaceState(null, '', location.pathname + location.hash);
+  onAuthStateChanged(auth, (u) => { if (!u) { const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: 'select_account' }); signInWithRedirect(auth, p).catch(() => {}); } }, () => {});
+}
+
 export async function loginGoogle() {
+  if (LINK3) { location.href = 'https://devsecops1010-coder.github.io' + location.pathname + '?glogin=1' + location.hash; return; }
   const p = new GoogleAuthProvider();
   p.setCustomParameters({ prompt: 'select_account' });
   try { return await signInWithPopup(auth, p); }
