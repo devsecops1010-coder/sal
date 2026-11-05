@@ -11,7 +11,14 @@ import { formatQty } from '../core/units.js';
 const MAX_BRANCHES = 6;
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-export const prefs = () => ({ branches: [], club: false, minCoverage: 0.8, ...load('sc.stores', {}) });
+export const prefs = () => {
+  const p = { branches: [], clubs: [], minCoverage: 0.8, ...load('sc.stores', {}) };
+  if (p.club === true && !p.clubs.includes('shufersal')) p.clubs = [...p.clubs, 'shufersal'];   // older setting (Shufersal only)
+  delete p.club;
+  return p;
+};
+const chainOf = (b) => String(b.id).split(':')[0];
+const bname = (b) => ((b.chainName ? b.chainName + ' ' : '') + b.name).trim();
 const setPrefs = (p) => save('sc.stores', p);
 const prodMap = () => load('sc.prodmap', {});
 const remember = (name, row) => { const m = prodMap(); m[norm(name)] = { code: row.productKey, name: row.name }; save('sc.prodmap', m); };
@@ -46,9 +53,11 @@ export function viewWhere(ctx) {
       p.branches.length
         ? h('div', { class: 'chips', style: 'flex-wrap:wrap;margin-top:8px' }, p.branches.map((b, i) => h('span', { class: 'chip' + (i === 0 ? ' on' : '') }, (i === 0 ? '⭐ ' : '') + b.name + ' · ' + (b.city || ''))))
         : h('p', { class: 'hint' }, 'בחרו עד 6 סניפים באזור שלכם. הסניף הראשון נחשב "הסניף הרגיל שלי".'),
-      h('label', { class: 'row', style: 'margin-top:10px;gap:8px;align-items:center' },
-        h('input', { type: 'checkbox', checked: p.club, onchange: (e) => { setPrefs({ ...prefs(), club: e.target.checked }); st.result = null; paint(); } }),
-        h('span', { class: 'hint' }, 'יש לי מועדון / כרטיס אשראי של שופרסל (כולל מבצעי מועדון בחישוב)'))));
+      [...new Map(p.branches.map((b) => [chainOf(b), b.chainName || chainOf(b)])).entries()].map(([cid, cname]) =>
+        h('label', { class: 'row', style: 'margin-top:8px;gap:8px;align-items:center' },
+          h('input', { type: 'checkbox', checked: p.clubs.includes(cid), onchange: (e) => {
+            const cur = prefs(); setPrefs({ ...cur, clubs: e.target.checked ? [...new Set([...cur.clubs, cid])] : cur.clubs.filter((x) => x !== cid) }); st.result = null; paint(); } }),
+          h('span', { class: 'hint' }, `יש לי מועדון / כרטיס של ${cname} (כולל מבצעי מועדון בחישוב)`)))));
 
     // products
     const unl = linked.filter((l) => !l.code);
@@ -79,7 +88,7 @@ export function viewWhere(ctx) {
       const branches = p.branches.map((b) => { const s = r.branches.find((x) => x.id === b.id); return { ...b, ...(s || {}), ok: !!s?.ok }; });
       const okB = branches.filter((b) => b.ok);
       const basket = withCode.map((l) => ({ id: l.item.id, name: l.item.name, qty: l.item.qty || 1, unit: l.item.unit || 'unit', barcode: l.code, productKey: l.code }));
-      const ectx = { now: new Date(), userClubs: p.club ? ['shufersal-club'] : [], weights: { price: 1 }, minCoverage: p.minCoverage, maxStaleHours: 48, preferredBranchId: p.branches[0]?.id };
+      const ectx = { now: new Date(), userClubs: p.clubs.map((c) => c + '-club'), weights: { price: 1 }, minCoverage: p.minCoverage, maxStaleHours: 48, preferredBranchId: p.branches[0]?.id };
       const rec = recommend(basket, okB, r.rows, ectx);
       const split = okB.length >= 2 ? splitOptions(basket, okB, r.rows, ectx).slice(0, 1) : [];
       st.result = { rec, split, branches, basket, rows: r.rows, at: new Date() };
@@ -100,9 +109,9 @@ export function viewWhere(ctx) {
       const best = rec.bestValue;
       out.push(h('div', { class: 'card glass', style: 'border:2px solid var(--accent)' },
         h('div', { class: 'hint' }, '🏆 הכי משתלם לסל שלך'),
-        h('div', { class: 'total' }, best.branch.name),
+        h('div', { class: 'total' }, bname(best.branch)),
         h('div', null, `${format(best.total)} · ${best.lines.length} מתוך ${basket.length} מוצרים`),
-        rec.vsPreferred && rec.vsPreferred.saving > 0 ? h('div', { class: 'badge', style: 'margin-top:6px' }, `חיסכון של ${format(rec.vsPreferred.saving)} לעומת ${rec.vsPreferred.preferred.name} (על ${rec.vsPreferred.comparedItems} מוצרים זהים)`) : null,
+        rec.vsPreferred && rec.vsPreferred.saving > 0 ? h('div', { class: 'badge', style: 'margin-top:6px' }, `חיסכון של ${format(rec.vsPreferred.saving)} לעומת ${bname(rec.vsPreferred.preferred)} (על ${rec.vsPreferred.comparedItems} מוצרים זהים)`) : null,
         h('ul', { class: 'hint', style: 'margin:8px 0 0;padding-inline-start:18px' }, (best.explain || []).map((x) => h('li', null, x)))));
       if (split.length) {
         const s = split[0];
@@ -113,7 +122,7 @@ export function viewWhere(ctx) {
     }
     for (const r of rec.ranking) out.push(branchCard(r));
     if (notCompared.length) out.push(h('p', { class: 'hint' }, `לא נכללו בהשוואה (לא נבחר מוצר): ${notCompared.map((l) => l.item.name).join(', ')}`));
-    out.push(h('p', { class: 'hint', style: 'margin-top:10px' }, 'מקור: קבצי המחירים הרשמיים שהרשתות מפרסמות לפי חוק שקיפות מחירים. כרגע זמינה רשת שופרסל בלבד. המחיר בקופה עשוי להשתנות; מבצעים בקופון לא נכללים. המרחק לסניפים לא ידוע לנו (הרשת לא מפרסמת מיקום מדויק).'));
+    out.push(h('p', { class: 'hint', style: 'margin-top:10px' }, 'מקור: קבצי המחירים הרשמיים שהרשתות מפרסמות לפי חוק שקיפות מחירים. רשתות זמינות: שופרסל, רמי לוי, אושר עד, טיב טעם. מבצעים בתנאי קנייה מינימלית ("מעל 75 ש״ח") מוצגים אבל לא מחושבים. המחיר בקופה עשוי להשתנות; מבצעים בקופון לא נכללים. המרחק לסניפים לא ידוע לנו (הרשת לא מפרסמת מיקום מדויק).'));
     return out;
   }
 
@@ -128,7 +137,7 @@ export function viewWhere(ctx) {
       h('p', { class: 'hint' }, `מחירים נכונים ל-${when(r.oldestUpdate || b.pricesPublishedAt)} · ${b.source || ''}`));
     return h('div', { class: 'card glass' + (r.eligible ? '' : ' muted') },
       h('div', { class: 'row', style: 'justify-content:space-between' },
-        h('div', null, h('b', null, b.name), h('div', { class: 'hint' }, [b.address, b.city].filter(Boolean).join(', '))),
+        h('div', null, h('b', null, bname(b)), h('div', { class: 'hint' }, [b.address, b.city].filter(Boolean).join(', '))),
         h('div', { style: 'text-align:left' }, h('b', null, format(r.total)), h('div', { class: 'hint' }, `${r.lines.length}/${r.lines.length + r.missing.length} מוצרים`))),
       r.promoSavings > 0 ? h('span', { class: 'badge' }, `מבצעים: −${format(r.promoSavings)}`) : null,
       !r.eligible ? h('span', { class: 'badge warn' }, 'חסרים מוצרים רבים, לא מומלץ') : null,
@@ -140,7 +149,9 @@ export function viewWhere(ctx) {
   }
 
   function pickProduct(item, done) {
-    const p = prefs(); const branch = p.branches[0];
+    const p = prefs(); let branch = p.branches[0];
+    const bsel = h('select', { class: 'input', 'aria-label': 'חיפוש בסניף', onchange: () => { branch = p.branches.find((b) => b.id === bsel.value) || branch; run(); } },
+      p.branches.map((b) => h('option', { value: b.id }, (b.chainName || '') + ' ' + b.name)));
     const q = h('input', { class: 'input', value: item.name, maxlength: '60', enterkeyhint: 'search', 'aria-label': 'חיפוש מוצר' });
     const res = h('div', { 'aria-live': 'polite' });
     const run = async () => {
@@ -158,7 +169,8 @@ export function viewWhere(ctx) {
     };
     q.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
     openSheet('איזה מוצר בדיוק? · ' + item.name, h('div', { class: 'row' }, q, h('button', { class: 'btn', onclick: run }, 'חיפוש')),
-      h('p', { class: 'hint' }, `מחפש ב${branch.name}. הבחירה נשמרת על הפריט ומשמשת להשוואה בכל הסניפים.`), res);
+      p.branches.length > 1 ? h('div', { class: 'field', style: 'margin-top:8px' }, bsel) : null,
+      h('p', { class: 'hint' }, 'הבחירה נשמרת על הפריט ומשמשת להשוואה בכל הסניפים (לפי ברקוד, גם ברשתות אחרות).'), res);
     run();
   }
 
