@@ -1,10 +1,11 @@
 {
-  "name": "סל · רשימת קניות",
+  "id": "./",
+  "name": "סל · SmartCart",
   "short_name": "סל",
+  "description": "רשימות קניות משפחתיות חכמות",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
   "dir": "rtl",
   "lang": "he",
   "background_color": "#0b1a14",
