@@ -9,9 +9,11 @@ import { search } from '../core/search.js';
 import * as BUD from '../core/budget.js';
 import { openScanner } from './scanner.js';
 import { lookupBarcode, saveProduct } from '../data/products.js';
+import * as PAN from '../core/pantry.js';
+import { openReceiptScan } from './receipts.js';
 
-const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], lid: null, catFilter: null, showArchived: false };
-const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null };
+const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], pantry: [], lid: null, catFilter: null, showArchived: false };
+const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null, pantry: null };
 const stop = (k) => { if (subs[k]) { subs[k](); subs[k] = null; } };
 const stopAll = () => Object.keys(subs).forEach(stop);
 const ICONS = ['🛒', '🧺', '🏠', '🎉', '🥗', '💊', '👶', '🐾', '🏖️', '🎁', '🧽', '🍕'];
@@ -41,7 +43,7 @@ onUser(async (u) => {
 });
 
 async function selectHousehold(hid) {
-  stopAll(); S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = [];
+  stopAll(); S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = []; S.pantry = [];
   if (hid) {
     try { S.household = await R.getHousehold(hid); } catch (e) { S.household = null; }
     if (!S.household) { await R.forgetHousehold(hid).catch(() => {}); S.hid = null; }
@@ -50,6 +52,7 @@ async function selectHousehold(hid) {
       subs.lists = R.watchLists(hid, (l) => { S.lists = l; rerenderIf('lists'); }, permErr);
       subs.trips = R.watchTrips(hid, (t) => { S.trips = t; rerenderIf('budget', 'history', 'lists'); }, permErr);
       subs.budgets = R.watchBudgets(hid, (b) => { S.budgets = b; rerenderIf('budget', 'lists'); }, permErr);
+      subs.pantry = R.watchPantry(hid, (p) => { S.pantry = p; rerenderIf('pantry', 'lists'); }, permErr);
     }
   }
   render();
@@ -83,6 +86,7 @@ function render() {
   S.frame = null; releaseAwake();
   if (r === 'family') return mount(shell('משפחה', viewFamily()));
   if (r === 'budget') return mount(shell('תקציב', viewBudget()));
+  if (r === 'pantry') return mount(shell('מזווה', viewPantry()));
   if (r === 'history') return mount(shell('היסטוריה', viewHistory()));
   if (r === 'settings') return mount(shell('הגדרות', viewSettings()));
   return mount(shell('רשימות', viewLists()));
@@ -96,7 +100,7 @@ function shell(title, body, { back, sub, actions } = {}) {
       h('div', { class: 'ttl' }, title, h('small', null, sub || S.household?.name || 'SmartCart')),
       actions || null),
     h('main', { class: 'wrap' }, body),
-    S.hid ? h('nav', { class: 'tabbar glass', 'aria-label': 'ניווט' }, tab('lists', '🛒', 'רשימות'), tab('budget', '💰', 'תקציב'), tab('history', '🧾', 'היסטוריה'), tab('family', '👨‍👩‍👧', 'משפחה'), tab('settings', '⚙️', 'הגדרות')) : null);
+    S.hid ? h('nav', { class: 'tabbar glass', 'aria-label': 'ניווט' }, tab('lists', '🛒', 'רשימות'), tab('pantry', '🥫', 'מזווה'), tab('budget', '💰', 'תקציב'), tab('history', '🧾', 'היסטוריה'), tab('family', '👨‍👩‍👧', 'משפחה'), tab('settings', '⚙️', 'הגדרות')) : null);
 }
 
 /* ---------------- login ---------------- */
@@ -158,7 +162,10 @@ function offerImport() {
 function viewLists() {
   const vis = S.lists.filter((l) => !!l.archived === S.showArchived);
   const alerts = BUD.budgetStatus(S.budgets, S.trips).filter((b) => b.state !== 'ok');
+  const exp = PAN.expiring(S.pantry);
   const wrap = h('div', null,
+    exp.length ? h('div', { class: 'card glass', role: 'alert', style: 'border-color:var(--amber);cursor:pointer', onclick: () => go('pantry') },
+      h('b', null, `⏰ ${exp.length} מוצרים במזווה פגים בקרוב`), ' ', h('span', { class: 'hint' }, exp.slice(0, 3).map((i) => `${i.name} (${PAN.expiryLabel(i.expiresAt)})`).join(' · '))) : null,
     alerts.map((b) => h('div', { class: 'card glass', role: 'alert', style: 'border-color:' + (b.state === 'over' ? 'var(--red)' : 'var(--amber)'), onclick: () => go('budget') },
       h('b', null, b.state === 'over' ? '⚠️ חריגה מהתקציב' : '⚠️ קרוב לתקציב'), ' ',
       h('span', { class: 'hint' }, `${b.cat ? cat(b.cat).name + ' · ' : ''}${b.period === 'week' ? 'השבוע' : 'החודש'}: ${format(b.spent)} מתוך ${format(b.amount)} (${b.pct}%)`))),
@@ -395,11 +402,13 @@ function finishShopping(lid, l, items, inCart, priced) {
   const total = h('input', { class: 'input', inputmode: 'decimal', placeholder: 'הסכום מהקבלה', value: priced ? (inCart / 100).toFixed(2) : '' });
   const date = h('input', { class: 'input', type: 'date', value: new Date().toLocaleDateString('en-CA', { timeZone: BUD.TZ }) });
   const clear = h('input', { type: 'checkbox', checked: true, id: 'clr' });
+  const toPantry = h('input', { type: 'checkbox', id: 'tp' });
   openSheet('סיום קנייה',
     h('p', { class: 'hint' }, `${items.filter((i) => i.done).length} פריטים נקנו.` + (priced ? ` לפי המחירים המשוערים: ${format(inCart)}.` : '')),
     h('div', { class: 'field' }, h('label', null, 'סכום ששולם בפועל (₪)'), total),
     h('div', { class: 'row' }, h('div', { class: 'field', style: 'flex:2' }, h('label', null, 'איפה קנית'), store), h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'תאריך'), date)),
-    h('label', { class: 'row hint', style: 'margin-bottom:12px' }, clear, 'להסיר מהרשימה את מה שנקנה'),
+    h('label', { class: 'row hint', style: 'margin-bottom:6px' }, clear, 'להסיר מהרשימה את מה שנקנה'),
+    h('label', { class: 'row hint', style: 'margin-bottom:12px' }, toPantry, 'להוסיף את מה שנקנה למזווה'),
     h('button', { class: 'btn block', onclick: async (e) => {
       const t = total.value.trim() ? toAgorot(total.value) : null;
       if (total.value.trim() && (t === null || t < 0)) return toast('סכום לא תקין');
@@ -409,6 +418,7 @@ function finishShopping(lid, l, items, inCart, priced) {
         const at = yy ? new Date(Date.UTC(yy, mm - 1, dd, 10)) : new Date();     // midday UTC → the chosen day in Israel
         await R.addTrip(S.hid, { listId: lid, listName: l?.name, store: store.value.trim(), total: t, estTotal: priced ? inCart : null, items: BUD.tripItemsFromList(items), at });
         if (store.value.trim()) { const pr = S.profile.prefs = S.profile.prefs || {}; pr.lastStore = store.value.trim(); R.saveProfile({ prefs: pr }).catch(() => {}); }
+        if (toPantry.checked) await R.applyPantryMerge(S.hid, PAN.mergePurchases(S.pantry, BUD.tripItemsFromList(items)));
         if (clear.checked) await R.clearDone(S.hid, lid, items);
         closeSheet(); toast('נשמר בהיסטוריה ובתקציב ✓'); go('list/' + lid);
       } catch (x) { permErr(x); e.target.disabled = false; }
@@ -504,7 +514,8 @@ function budgetSheet(b) {
 
 /* ================= Phase 4: shopping history ================= */
 function viewHistory() {
-  const box = h('div', null, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h2', null, 'היסטוריית קניות'), h('button', { class: 'btn ghost sm', onclick: manualExpense }, '+ הוצאה ידנית')));
+  const box = h('div', null, h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap' }, h('h2', null, 'היסטוריית קניות'),
+    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => openReceiptScan((r) => R.addReceipt(S.hid, r)) }, '📄 סריקת קבלה'), h('button', { class: 'btn ghost sm', onclick: manualExpense }, '+ הוצאה ידנית'))));
   const reg = BUD.regulars(S.trips);
   if (reg.length) box.append(h('div', { class: 'card glass' }, h('b', null, `🔁 מוצרים קבועים (${reg.length})`),
     h('p', { class: 'hint' }, reg.slice(0, 12).map((r) => r.name).join(' · ') + (reg.length > 12 ? '…' : '')),
@@ -513,7 +524,7 @@ function viewHistory() {
   for (const t of S.trips) {
     const amt = Number.isInteger(t.total) ? format(t.total) : Number.isInteger(t.estTotal) ? format(t.estTotal) + ' (משוער)' : '—';
     box.append(h('div', { class: 'lcard glass', role: 'button', tabindex: '0', onclick: () => tripSheet(t), onkeydown: (e) => { if (e.key === 'Enter') tripSheet(t); } },
-      h('div', { class: 'ic' }, '🧾'),
+      h('div', { class: 'ic' }, t.receiptId ? '📄' : '🧾'),
       h('div', { class: 'info' }, h('b', null, t.store || t.listName || 'קנייה'), h('span', { class: 'hint' }, t.at.toLocaleDateString('he-IL') + ` · ${(t.items || []).length} פריטים · ${t.byName || ''}`)),
       h('b', null, amt)));
   }
@@ -536,6 +547,7 @@ function tripSheet(t) {
   content.push(h('div', { class: 'row', style: 'margin-top:12px;flex-wrap:wrap' },
     items.length ? h('button', { class: 'btn', onclick: async () => { closeSheet(); try { const id = await R.listFromItems(S.hid, 'שוב: ' + (t.store || t.listName || 'קנייה'), items); toast('נוצרה רשימה מהסל ✓'); go('list/' + id); } catch (e) { permErr(e); } } }, 'קנה שוב את הסל') : null,
     h('button', { class: 'btn ghost', onclick: () => editTripSheet(t) }, 'עריכת סכום/חנות'),
+    t.receiptId ? h('button', { class: 'btn ghost', onclick: () => receiptDetails(t) }, 'פרטי הקבלה') : null,
     meIsAdmin() ? h('button', { class: 'btn ghost', style: 'color:var(--red)', onclick: () => confirmSheet('למחוק את הקנייה?', 'היא תוסר מההיסטוריה ומהתקציב.', 'מחיקה', () => R.deleteTrip(S.hid, t.id).then(() => toast('נמחקה')).catch(permErr)) }, 'מחיקה') : null));
   openSheet(t.store || t.listName || 'קנייה', ...content);
 }
@@ -558,4 +570,79 @@ function manualExpense() {
       const [yy, mm, dd] = date.value.split('-').map(Number);
       try { await R.addTrip(S.hid, { store: store.value.trim(), total: v, items: [], at: yy ? new Date(Date.UTC(yy, mm - 1, dd, 10)) : new Date() }); closeSheet(); toast('נשמר ✓'); } catch (e) { permErr(e); }
     } }, 'שמירה'));
+}
+
+/* ================= Phase 5: receipt details (source, confidence, OCR text) + retention ================= */
+async function receiptDetails(t) {
+  let r = null; try { r = await R.getReceipt(S.hid, t.receiptId); } catch {}
+  if (!r) return toast('הקבלה לא נמצאה (אולי נמחקה)');
+  const canDel = meIsAdmin() || r.by === S.user.uid;
+  openSheet('פרטי הקבלה',
+    h('div', { class: 'row', style: 'flex-wrap:wrap;gap:6px' }, h('span', { class: 'badge' + (r.confidence >= 0.8 ? '' : ' warn') }, 'ביטחון זיהוי ' + Math.round((r.confidence || 0) * 100) + '%'), h('span', { class: 'badge' }, 'אושר ע״י ' + (r.byName || ''))),
+    h('p', { class: 'hint' }, 'מקור: ' + (r.engine || 'OCR') + '. התמונה עצמה לא נשמרה, רק הנתונים שאושרו והטקסט שזוהה.'),
+    (r.warnings || []).length ? h('div', { class: 'hint' }, r.warnings.map((w) => h('div', null, '⚠️ ' + w))) : null,
+    h('details', null, h('summary', { class: 'hint' }, 'הטקסט שזוהה (לבקרה)'), h('pre', { style: 'white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;direction:rtl' }, r.rawText || '')),
+    canDel ? h('button', { class: 'btn ghost block', style: 'margin-top:10px;color:var(--red)', onclick: () => confirmSheet('למחוק את נתוני הקבלה?', 'הטקסט והפריטים שזוהו יימחקו. הקנייה עצמה נשארת בהיסטוריה ובתקציב.', 'מחיקה', () => R.deleteReceipt(S.hid, r.id).then(() => toast('נתוני הקבלה נמחקו')).catch(permErr)) }, 'מחיקת נתוני הקבלה') : null);
+}
+
+/* ================= Phase 6: pantry ================= */
+function viewPantry() {
+  const box = h('div', null, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h2', null, 'המלאי בבית'), h('button', { class: 'btn sm', onclick: () => pantrySheet() }, '+ מוצר')));
+  const exp = PAN.expiring(S.pantry);
+  if (exp.length) box.append(h('div', { class: 'card glass', role: 'alert', style: 'border-color:var(--amber)' }, h('b', null, '⏰ פג תוקף / פג בקרוב'),
+    exp.map((i) => h('div', { class: 'row', style: 'justify-content:space-between;padding:4px 0' }, h('span', null, i.name), h('span', { class: 'badge warn' }, PAN.expiryLabel(i.expiresAt))))));
+  const lists = S.lists.filter((l) => !l.archived);
+  const miss = PAN.missing(S.pantry);
+  if (miss.length) box.append(h('div', { class: 'card glass' }, h('b', null, `🛒 חסר או עומד להיגמר (${miss.length})`), h('p', { class: 'hint' }, miss.map((i) => i.name).join(' · ')),
+    lists.length ? h('button', { class: 'btn sm', onclick: () => chooseList(lists, async (lid) => {
+      for (const m of miss) R.addItem(S.hid, lid, { name: m.name, qty: Math.max(1, (m.minQty || 1) - (m.qty || 0)), unit: m.unit || 'unit', cat: m.cat || guessCategory(m.name), barcode: m.barcode });
+      toast(`נוספו ${miss.length} פריטים לרשימה ✓`); go('list/' + lid);
+    }) }, 'הוספה לרשימת קניות') : h('p', { class: 'hint' }, 'צור רשימה כדי להוסיף אליה.')));
+  if (!S.pantry.length) box.append(h('div', { class: 'empty' }, h('div', { class: 'big' }, '🥫'), 'המלאי ריק. אפשר להוסיף מוצרים ידנית, או לסמן "להוסיף למזווה" בסיום קנייה.'));
+  for (const [z, items] of PAN.groupByZone(S.pantry)) {
+    const zo = PAN.zoneOf(z);
+    box.append(h('div', { class: 'cat-h' }, `${zo.em} ${zo.name}`, h('span', { class: 'cnt' }, items.length)));
+    for (const i of items.sort((a, b) => (PAN.daysLeft(a.expiresAt) ?? 9999) - (PAN.daysLeft(b.expiresAt) ?? 9999) || a.name.localeCompare(b.name, 'he'))) {
+      const st = PAN.expiryStatus(i.expiresAt), out = (i.qty ?? 0) <= 0;
+      box.append(h('div', { class: 'item glass' + (out ? ' done' : '') },
+        h('div', { class: 'nm', onclick: () => pantrySheet(i) }, h('b', null, i.name),
+          h('div', { class: 'meta' }, [out ? 'נגמר' : formatQty(i.qty, i.unit) || '1', i.expiresAt ? PAN.expiryLabel(i.expiresAt) : '', i.minQty ? `מינימום ${i.minQty}` : ''].filter(Boolean).join(' · '))),
+        st && st !== 'ok' && !out ? h('span', { class: 'badge warn' }, st === 'expired' ? 'פג' : st === 'today' ? 'היום' : 'בקרוב') : null,
+        out ? null : h('button', { class: 'icon-btn', 'aria-label': 'השתמשתי באחד: ' + i.name, title: 'השתמשתי באחד', onclick: () => R.updatePantry(S.hid, i.id, { qty: PAN.consume(i.qty, 1) }).catch(permErr) }, '−'),
+        h('button', { class: 'icon-btn', 'aria-label': 'עריכת ' + i.name, onclick: () => pantrySheet(i) }, '✎')));
+    }
+  }
+  return box;
+}
+function chooseList(lists, cb) {
+  if (lists.length === 1) return cb(lists[0].id);
+  openSheet('לאיזו רשימה?', ...lists.map((l) => h('button', { class: 'btn ghost block', style: 'margin-bottom:8px', onclick: () => { closeSheet(); cb(l.id); } }, (l.icon || '🛒') + ' ' + l.name)));
+}
+function pantrySheet(i) {
+  const name = h('input', { class: 'input', value: i?.name || '', maxlength: '120', placeholder: 'שם המוצר' });
+  const qty = h('input', { class: 'input', type: 'number', min: '0', step: 'any', inputmode: 'decimal', value: i?.qty ?? 1 });
+  const unit = h('select', { class: 'input' }, Object.entries(UNITS).map(([k, u]) => h('option', { value: k, selected: (i?.unit || 'unit') === k }, u.he)));
+  const zones = [...PAN.ZONES.map((z) => z.id), ...new Set(S.pantry.map((p) => p.zone).filter((z) => z && !PAN.ZONES.some((x) => x.id === z)))];
+  const zone = h('select', { class: 'input' }, zones.map((z) => h('option', { value: z, selected: (i?.zone || 'pantry') === z }, PAN.zoneOf(z).em + ' ' + PAN.zoneOf(z).name)), h('option', { value: '__new' }, '+ אזור חדש…'));
+  const newZone = h('input', { class: 'input', placeholder: 'שם האזור, למשל "מקרר במחסן"', maxlength: '40', style: 'display:none;margin-top:6px' });
+  zone.onchange = () => { newZone.style.display = zone.value === '__new' ? '' : 'none'; if (zone.value === '__new') newZone.focus(); };
+  const exp = h('input', { class: 'input', type: 'date', value: i?.expiresAt || '' });
+  const min = h('input', { class: 'input', type: 'number', min: '0', step: 'any', value: i?.minQty ?? '', placeholder: 'לא חובה' });
+  openSheet(i ? 'עריכת מוצר במלאי' : 'מוצר חדש במלאי',
+    h('div', { class: 'field' }, h('label', null, 'שם'), name),
+    h('div', { class: 'row' }, h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'כמות'), qty), h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'יחידה'), unit)),
+    h('div', { class: 'field' }, h('label', null, 'איפה זה נמצא'), zone, newZone),
+    h('div', { class: 'row' }, h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'תוקף'), exp), h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'התראה מתחת ל-'), min)),
+    h('div', { class: 'row' },
+      i ? h('button', { class: 'btn danger', onclick: () => { closeSheet(); R.deletePantry(S.hid, i.id).catch(permErr); } }, 'מחיקה') : null,
+      i && (i.qty ?? 0) > 0 ? h('button', { class: 'btn ghost', onclick: () => { closeSheet(); R.updatePantry(S.hid, i.id, { qty: 0 }).then(() => toast('סומן שנגמר')).catch(permErr); } }, 'נגמר') : null,
+      h('button', { class: 'btn block', onclick: () => {
+        const n = name.value.trim(); if (!n) return toast('צריך שם');
+        const z = zone.value === '__new' ? newZone.value.trim() : zone.value; if (!z) return toast('צריך שם לאזור');
+        const q = qty.value === '' ? 1 : Number(qty.value), m = min.value === '' ? null : Number(min.value);
+        if (!(q >= 0) || (m !== null && !(m >= 0))) return toast('כמות לא תקינה');
+        const data = { name: n, qty: q, unit: unit.value, zone: z, cat: i?.cat || guessCategory(n), expiresAt: exp.value || null, minQty: m };
+        (i ? R.updatePantry(S.hid, i.id, data) : Promise.resolve(R.addPantry(S.hid, data))).then(() => toast('נשמר ✓')).catch(permErr);
+        closeSheet();
+      } }, 'שמירה')));
 }
