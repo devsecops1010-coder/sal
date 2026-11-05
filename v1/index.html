@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0b1a14">
+<title>סל · רשימת קניות</title>
+<link rel="apple-touch-icon" id="appleIcon" href="../icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="סל">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f6f4;--card:#ffffff;--card2:#f6faf8;--line:#e3ebe7;--ring:#cdddd5;
+  --txt:#102a1f;--txt2:#5c7268;--txt3:#92a79d;
+  --accent:#16a34a;--accent-d:#15803d;--accent-soft:#e7f6ec;
+  --amber:#d97706;--amber-soft:#fef3c7;--red:#dc2626;--red-soft:#fee2e2;
+  --shadow:0 1px 2px rgba(16,42,31,.06),0 6px 18px rgba(16,42,31,.07);
+  --safe-b:env(safe-area-inset-bottom);--safe-t:env(safe-area-inset-top);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0b1410;--card:#121e18;--card2:#0f1a14;--line:#1e2d25;--ring:#2d4336;
+  --txt:#e6f0ea;--txt2:#93a89d;--txt3:#647a6f;
+  --accent:#22c55e;--accent-d:#16a34a;--accent-soft:#12271a;
+  --amber:#f59e0b;--amber-soft:#2a2008;--red:#ef4444;--red-soft:#2a1113;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 20px rgba(0,0,0,.4);
+}}
+:root[data-theme=dark]{
+  --bg:#0b1410;--card:#121e18;--card2:#0f1a14;--line:#1e2d25;--ring:#2d4336;
+  --txt:#e6f0ea;--txt2:#93a89d;--txt3:#647a6f;
+  --accent:#22c55e;--accent-d:#16a34a;--accent-soft:#12271a;
+  --amber:#f59e0b;--amber-soft:#2a2008;--red:#ef4444;--red-soft:#2a1113;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 20px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font-family:Heebo,system-ui,sans-serif;background:var(--bg);color:var(--txt);font-size:15px;line-height:1.45;
+  overscroll-behavior-y:none;padding-bottom:calc(150px + var(--safe-b))}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:16px}
+.app{max-width:720px;margin:0 auto}
+.top{position:sticky;top:0;z-index:30;background:var(--card);border-bottom:1px solid var(--line);
+  padding:calc(10px + var(--safe-t)) 16px 10px;display:flex;align-items:center;gap:10px}
+.top .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent-d));
+  display:grid;place-items:center;color:#fff}
+.top .logo svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2}
+.top .ttl{font-weight:800;font-size:18px;letter-spacing:-.01em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .ttl small{display:block;font-size:11px;color:var(--txt2);font-weight:500}
+.iconbtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--txt2);
+  display:grid;place-items:center;font-size:16px;flex:none}
+.wrap{padding:12px 16px 20px}
+/* progress */
+.prog{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px;box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:12px}
+.prog .ring{width:44px;height:44px;flex:none;position:relative}
+.prog .ring svg{transform:rotate(-90deg)}
+.prog .ring .num{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;font-weight:800}
+.prog .lbl b{font-size:15px}.prog .lbl div{font-size:12px;color:var(--txt2)}
+.prog .act{margin-inline-start:auto}
+/* category group */
+.cat{margin-bottom:14px}
+.cat-h{display:flex;align-items:center;gap:8px;padding:2px 2px 8px;font-weight:700;font-size:13px;color:var(--txt2)}
+.cat-h .em{font-size:16px}
+.cat-h .cnt{margin-inline-start:auto;font-size:12px;color:var(--txt3)}
+.items{display:flex;flex-direction:column;gap:6px}
+.item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:13px;
+  padding:11px 13px;box-shadow:var(--shadow);transition:opacity .2s}
+.item .cb{width:24px;height:24px;border-radius:50%;border:2px solid var(--ring);flex:none;display:grid;place-items:center;
+  color:#fff;transition:all .15s}
+.item .cb svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:3;opacity:0}
+.item.done .cb{background:var(--accent);border-color:var(--accent)}
+.item.done .cb svg{opacity:1}
+.item .nm{flex:1;min-width:0}
+.item .nm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.done .nm b{text-decoration:line-through;color:var(--txt3)}
+.item .q{font-size:12px;color:var(--txt2)}
+.item .del{width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:var(--txt3);font-size:16px;flex:none}
+.item .del:active{background:var(--red-soft);color:var(--red)}
+.empty{text-align:center;padding:48px 20px;color:var(--txt3)}
+.empty .ic{font-size:44px;margin-bottom:10px}
+/* add bar */
+.addbar{position:fixed;bottom:calc(58px + var(--safe-b));left:0;right:0;z-index:35;padding:8px 12px;
+  max-width:720px;margin:0 auto}
+.addbox{background:var(--card);border:1px solid var(--ring);border-radius:16px;box-shadow:0 6px 24px rgba(16,42,31,.14);padding:8px}
+.addrow{display:flex;align-items:center;gap:8px}
+.addrow input{flex:1;border:none;background:transparent;color:var(--txt);outline:none;padding:8px 6px;font-size:16px}
+.addrow .qty{flex:none;width:64px;border:1px solid var(--line);border-radius:10px;background:var(--card2);text-align:center;padding:8px 4px}
+.addrow .go{width:42px;height:42px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:22px;flex:none;display:grid;place-items:center}
+.sugg{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:8px 2px 2px}
+.sugg::-webkit-scrollbar{display:none}
+.sugg .chip{flex:none;border:1px solid var(--line);background:var(--card2);color:var(--txt);border-radius:999px;padding:6px 11px;font-size:13px;font-weight:600}
+/* lists screen */
+.listcard{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:13px 14px;box-shadow:var(--shadow);margin-bottom:8px}
+.listcard.active{border-color:var(--accent)}
+.listcard .ic{width:40px;height:40px;border-radius:11px;background:var(--accent-soft);display:grid;place-items:center;font-size:20px;flex:none}
+.listcard .info{flex:1;min-width:0}
+.listcard .info b{display:block}.listcard .info span{font-size:12px;color:var(--txt2)}
+.listcard .mini{height:5px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px;max-width:140px}
+.listcard .mini i{display:block;height:100%;background:var(--accent)}
+/* buttons */
+.btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;font-size:15px;background:var(--accent);color:#fff;box-shadow:var(--shadow)}
+.btn.block{display:block;width:100%}
+.btn.ghost{background:var(--card);color:var(--txt);border:1px solid var(--line)}
+.btn.sm{padding:8px 12px;font-size:13px;border-radius:10px}
+.btn.danger{background:var(--red)}
+h2.page{font-size:22px;font-weight:800;margin:4px 0 14px}
+.row-btns{display:flex;gap:8px}
+/* tabbar */
+.tabbar{position:fixed;bottom:0;inset-inline:0;z-index:40;background:var(--card);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:var(--safe-b);max-width:720px;margin:0 auto;left:0;right:0}
+.tab{background:none;border:none;padding:8px 0 7px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--txt3);font-size:11px;font-weight:600}
+.tab svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9}
+.tab.active{color:var(--accent)}
+/* sheet */
+.sheet-bg{position:fixed;inset:0;z-index:60;background:rgba(10,20,15,.5);display:none;align-items:flex-end;justify-content:center}
+.sheet-bg.open{display:flex}
+.sheet{background:var(--card);width:100%;max-width:720px;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + var(--safe-b));max-height:86vh;overflow:auto;animation:up .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
+.sheet .grab{width:40px;height:4px;border-radius:999px;background:var(--ring);margin:0 auto 14px}
+.sheet h3{margin:0 0 12px;font-size:19px;font-weight:800}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:6px}
+.input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--txt);outline:none}
+.catpick{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.catopt{display:flex;align-items:center;gap:8px;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card2);font-size:14px;font-weight:600}
+.catopt.sel{border-color:var(--accent);background:var(--accent-soft)}
+.catopt .em{font-size:18px}
+.iconrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.iconrow .ic{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--card2);display:grid;place-items:center;font-size:20px}
+.iconrow .ic.sel{border-color:var(--accent);background:var(--accent-soft)}
+#toasts{position:fixed;top:calc(12px + var(--safe-t));inset-inline:0;z-index:80;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+.toast{background:var(--txt);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--shadow)}
+.screen{display:none}.screen.on{display:block;animation:fade .25s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+/* =================== GLASS THEME (overrides) =================== */
+:root{
+  --bg:#e9f5ef;--card:rgba(255,255,255,.62);--card2:rgba(255,255,255,.42);
+  --line:rgba(16,60,40,.09);--ring:rgba(16,60,40,.18);
+  --glass-brd:rgba(255,255,255,.8);--glass-fx:saturate(170%) blur(20px);
+  --accent:#16a34a;--accent-d:#0d9488;--accent-soft:rgba(22,163,74,.13);
+  --shadow:0 1px 1px rgba(16,60,40,.04),0 12px 32px rgba(13,148,136,.12);
+  --orb-a:rgba(34,197,94,.45);--orb-b:rgba(20,184,166,.38);--orb-c:rgba(132,204,22,.32);--orb-d:rgba(14,165,233,.30);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#05110c;--card:rgba(18,40,30,.52);--card2:rgba(255,255,255,.045);
+  --line:rgba(255,255,255,.08);--ring:rgba(255,255,255,.16);--glass-brd:rgba(255,255,255,.11);
+  --accent:#34d399;--accent-d:#2dd4bf;--accent-soft:rgba(52,211,153,.15);
+  --shadow:0 12px 36px rgba(0,0,0,.45);
+  --orb-a:rgba(34,197,94,.30);--orb-b:rgba(20,184,166,.26);--orb-c:rgba(132,204,22,.16);--orb-d:rgba(14,165,233,.20);
+}}
+:root[data-theme=dark]{
+  --bg:#05110c;--card:rgba(18,40,30,.52);--card2:rgba(255,255,255,.045);
+  --line:rgba(255,255,255,.08);--ring:rgba(255,255,255,.16);--glass-brd:rgba(255,255,255,.11);
+  --accent:#34d399;--accent-d:#2dd4bf;--accent-soft:rgba(52,211,153,.15);
+  --shadow:0 12px 36px rgba(0,0,0,.45);
+  --orb-a:rgba(34,197,94,.30);--orb-b:rgba(20,184,166,.26);--orb-c:rgba(132,204,22,.16);--orb-d:rgba(14,165,233,.20);
+}
+body{background:var(--bg);padding-bottom:calc(170px + var(--safe-b))}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(70vmax 55vmax at -5% -10%,var(--orb-a),transparent 60%),
+    radial-gradient(55vmax 45vmax at 105% 10%,var(--orb-b),transparent 60%),
+    radial-gradient(70vmax 55vmax at 85% 110%,var(--orb-c),transparent 60%),
+    radial-gradient(50vmax 45vmax at -10% 85%,var(--orb-d),transparent 60%)}
+.top,.tabbar,.prog,.item,.listcard,.addbox,.sheet,.iconbtn,.btn.ghost,.catopt,.chip{
+  -webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);border-color:var(--glass-brd)}
+.top{background:var(--card);border-bottom:1px solid var(--glass-brd)}
+.top .logo{background:linear-gradient(135deg,#22c55e,#0d9488);box-shadow:0 6px 16px rgba(13,148,136,.35)}
+.prog,.listcard{border-radius:20px}.item{border-radius:16px}
+.tabbar{left:12px;right:12px;bottom:calc(10px + var(--safe-b));max-width:696px;border:1px solid var(--glass-brd);border-radius:24px;
+  padding:4px;background:var(--card);box-shadow:var(--shadow)}
+.tab{border-radius:18px;padding:7px 0 6px}.tab.active{background:var(--accent-soft)}
+.addbar{bottom:calc(74px + var(--safe-b))}
+.addbox{border-radius:20px;box-shadow:var(--shadow)}
+.addrow .go,.btn{background:linear-gradient(135deg,#22c55e,#0d9488);box-shadow:0 6px 18px rgba(13,148,136,.3)}
+.btn{border-radius:14px}
+.btn.ghost{background:var(--card);box-shadow:none;border:1px solid var(--glass-brd)}
+.btn.danger{background:linear-gradient(135deg,#ef4444,#f43f5e);box-shadow:0 6px 18px rgba(239,68,68,.28)}
+.iconbtn{background:var(--card)}
+.sheet-bg{background:rgba(5,20,12,.35);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.sheet{background:var(--card);border:1px solid var(--glass-brd);border-bottom:none}
+.input,.addrow .qty{background:var(--card2);border-color:var(--ring)}
+.sync-ban{display:flex;gap:10px;align-items:center;background:var(--accent-soft);border:1px solid var(--accent);border-radius:18px;padding:12px;margin-bottom:12px;font-size:13px;line-height:1.5}
+.sync-ban .sb-ic{font-size:26px}.sync-ban b{font-size:14px}
+.cloud-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;margin-inline-start:6px}
+.sharebox{display:flex;gap:6px;align-items:center;background:var(--card2);border:1px solid var(--ring);border-radius:12px;padding:8px 10px;font-size:12px;direction:ltr;word-break:break-all;margin-bottom:10px}
+@media (prefers-reduced-transparency:reduce){:root{--card:#fff;--card2:#f6faf8}}
+</style>
+</head>
+<body>
+<a href="../" style="display:block;text-align:center;padding:8px 12px;background:var(--accent);color:#fff;font:600 14px system-ui;text-decoration:none">זו הגרסה הקודמת של סל. לחצו כאן לסל החדש (הרשימות מועברות אליו בלחיצה)</a>
+<div id="toasts"></div>
+<div class="app">
+  <div class="top">
+    <span class="logo"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 12.3a2 2 0 002 1.7h7.7a2 2 0 002-1.6L21 8H6"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg></span>
+    <div class="ttl" id="listTitle">רשימת קניות<small id="listSub">—</small></div>
+    <button class="iconbtn" id="themeBtn" title="מצב כהה/בהיר">◐</button>
+  </div>
+
+  <!-- LIST -->
+  <section class="screen on" id="sc-list">
+    <div class="wrap">
+      <div id="syncBanner"></div>
+      <div class="prog" id="progCard" style="display:none">
+        <div class="ring"><svg width="44" height="44"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line)" stroke-width="5"/><circle id="progArc" cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="113"/></svg><span class="num" id="progNum">0%</span></div>
+        <div class="lbl"><b id="progText">0 מתוך 0</b><div>פריטים שנאספו</div></div>
+        <button class="btn sm ghost act" id="clearDone" onclick="clearChecked()">נקה שנאספו</button>
+      </div>
+      <div id="listBody"></div>
+    </div>
+  </section>
+
+  <!-- LISTS -->
+  <section class="screen" id="sc-lists">
+    <div class="wrap">
+      <h2 class="page">הרשימות שלי</h2>
+      <div id="listsBody"></div>
+      <button class="btn block" style="margin-top:6px" onclick="openListEdit()">+ רשימה חדשה</button>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="screen" id="sc-settings">
+    <div class="wrap">
+      <h2 class="page">הגדרות</h2>
+      <div class="listcard" id="homeCard" style="flex-direction:column;align-items:stretch;gap:10px"></div>
+      <div class="listcard" style="flex-direction:column;align-items:stretch;gap:10px">
+        <b>שיתוף רשימה אחת עם מישהו אחר</b>
+        <span style="font-size:13px;color:var(--txt2)" id="liveTxt">קישור לרשימה הנוכחית בלבד, למשל לחבר שקונה בשבילכם. הוא לא יראה את שאר הרשימות.</span>
+        <button class="btn sm" onclick="openLiveShare()" style="align-self:flex-start" id="liveBtn">🔗 שתף את הרשימה הזו</button>
+      </div>
+      <div class="listcard" style="flex-direction:column;align-items:stretch;gap:10px">
+        <b>שליחת הרשימה כטקסט</b>
+        <span style="font-size:13px;color:var(--txt2)">שלח את הרשימה כטקסט לוואטסאפ או כל אפליקציה.</span>
+        <button class="btn sm" onclick="shareList()" style="align-self:flex-start">📤 שתף רשימה</button>
+      </div>
+      <div class="listcard" style="flex-direction:column;align-items:stretch;gap:10px">
+        <b>נתונים</b>
+        <div class="row-btns">
+          <button class="btn sm ghost" onclick="exportData()">ייצוא גיבוי</button>
+          <button class="btn sm ghost" onclick="seedDemo()">רשימת דוגמה</button>
+          <button class="btn sm danger" onclick="wipeAll()">איפוס</button>
+        </div>
+      </div>
+      <p style="text-align:center;color:var(--txt3);font-size:13px;margin-top:18px">סל · רשימת קניות חכמה · נשמר במכשיר שלך, ורשימות משותפות גם בענן</p>
+    </div>
+  </section>
+</div>
+
+<!-- add bar -->
+<div class="addbar" id="addbar">
+  <div class="addbox">
+    <div class="sugg" id="sugg"></div>
+    <div class="addrow">
+      <input id="addInput" placeholder="מה צריך לקנות?" enterkeyhint="done" autocomplete="off">
+      <input id="addQty" class="qty" placeholder="כמות" inputmode="numeric">
+      <button class="go" onclick="quickAdd()" aria-label="הוסף">+</button>
+    </div>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <button class="tab active" data-sc="list" onclick="go('list')">
+    <svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 12.3a2 2 0 002 1.7h7.7a2 2 0 002-1.6L21 8H6"/><circle cx="9" cy="20" r="1.2"/><circle cx="17" cy="20" r="1.2"/></svg>הרשימה</button>
+  <button class="tab" data-sc="lists" onclick="go('lists')">
+    <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>רשימות</button>
+  <button class="tab" data-sc="settings" onclick="go('settings')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>הגדרות</button>
+</nav>
+
+<div class="sheet-bg" id="sheetBg" onclick="if(event.target===this)closeSheet()"><div class="sheet" id="sheet"></div></div>
+
+<script>
+/* ===== storage ===== */
+const KEY='shoplist.v1';
+const CATS=[
+  {id:'produce',name:'ירקות ופירות',em:'🥦'},
+  {id:'dairy',name:'מוצרי חלב וביצים',em:'🥛'},
+  {id:'meat',name:'בשר, עוף ודגים',em:'🍗'},
+  {id:'bakery',name:'מאפים ולחם',em:'🥖'},
+  {id:'pantry',name:'יבשים ושימורים',em:'🥫'},
+  {id:'frozen',name:'קפואים',em:'🧊'},
+  {id:'drinks',name:'משקאות',em:'🧃'},
+  {id:'snacks',name:'חטיפים ומתוקים',em:'🍫'},
+  {id:'cleaning',name:'ניקיון',em:'🧼'},
+  {id:'toiletries',name:'טואלטיקה ותינוקות',em:'🧴'},
+  {id:'other',name:'אחר',em:'🛒'},
+];
+/* keyword → category auto-guess */
+const KW={
+  produce:['עגבני','מלפפון','חסה','גזר','בצל','שום','תפוח','בננ','אבוקדו','לימון','תפוז','פלפל','תפוח אדמה','בטטה','קישוא','חציל','ברוקולי','כרוב','סלק','פטרוזיליה','כוסברה','נענע','ענב','מלון','אבטיח','תות','אגס','רימון','פטריות'],
+  dairy:['חלב','גבינ','קוטג','יוגורט','שמנת','חמאה','ביצים','ביצה','לבן','דנונה','מילקי','צהוב','בולגרית','מוצרלה'],
+  meat:['עוף','בשר','שניצל','טחון','דג','סלמון','כבד','הודו','נקניק','קציצות','אנטריקוט','פרגית','חזה'],
+  bakery:['לחם','לחמני','פיתה','פיתות','בגט','חלה','קרואסון','עוג','בורקס','טורטיה','מצה'],
+  pantry:['אורז','פסטה','קמח','סוכר','מלח','שמן','טונה','תירס','קטשופ','מיונז','חומוס','טחינה','קפה','תה','דבש','ריבה','פתיתים','קוסקוס','עדשים','שעועית','חומץ','רוטב','תבלין','פירה'],
+  frozen:['קפוא','גלידה','במיה','אפונה קפוא','פיצה קפוא','קרח'],
+  drinks:['מים','קולה','מיץ','מיץ תפוז','מיץ תפוח','מיץ ענב','מיץ לימון','סודה','בירה','יין','משקה','ספרייט','פאנטה','שוקו'],
+  snacks:['ביסלי','במבה','שוקולד','עוגיות','חטיף','תפוציפס','צ׳יפס','ופל','סוכריות','מסטיק','חטיפים'],
+  cleaning:['סבון כלים','אקונומיקה','מגבוני','נייר טואלט','מטהר','ג׳ל','אבקת כביסה','מרכך','שקיות','ספוג','מטליות','נייל'],
+  toiletries:['שמפו','משחת שיניים','מברשת','דאודורנט','חיתולים','מגבוני תינוק','סבון רחצה','קרם','תחבושות','גילוח']
+};
+/* normalize Hebrew final letters (ן→נ etc.) so singular keywords match plurals, then take the LONGEST matching keyword */
+const FIN={'ך':'כ','ם':'מ','ן':'נ','ף':'פ','ץ':'צ'};
+const norm=s=>s.trim().replace(/[ךםןףץ]/g,ch=>FIN[ch]);
+function guessCat(name){const n=norm(name);let best='other',len=0;
+  for(const c in KW)for(const k of KW[c]){const kk=norm(k);if(kk.length>len&&n.includes(kk)){best=c;len=kk.length}}
+  return best}
+const DEFAULT=()=>({theme:'auto',cur:'l1',
+  lists:[{id:'l1',name:'הסופר השבועי',icon:'🛒',items:[]}],
+  history:[]});
+let S=load();
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));if(r&&r.lists)return r}catch(e){}return DEFAULT()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(window.cloudSync)cloudSync()}
+const $=s=>document.querySelector(s),el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+const uid=()=>Math.random().toString(36).slice(2,8);
+const curList=()=>S.lists.find(l=>l.id===S.cur)||S.lists[0];
+const cat=id=>CATS.find(c=>c.id===id)||CATS[CATS.length-1];
+const CHK='<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg>';
+
+function go(sc){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  $('#sc-'+sc).classList.add('on');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.sc===sc));
+  $('#addbar').style.display=sc==='list'?'':'none';
+  window.scrollTo(0,0);
+  if(sc==='lists')renderLists();
+}
+function toast(m){const t=el('div','toast');t.textContent=m;$('#toasts').appendChild(t);setTimeout(()=>{t.style.opacity=0;setTimeout(()=>t.remove(),300)},2000)}
+function openSheet(h){$('#sheet').innerHTML='<div class="grab"></div>'+h;$('#sheetBg').classList.add('open')}
+function closeSheet(){$('#sheetBg').classList.remove('open')}
+
+/* ===== list view ===== */
+function renderList(){
+  const L=curList();
+  $('#listTitle').childNodes[0].nodeValue=L.icon+' '+L.name;
+  const done=L.items.filter(i=>i.done).length,total=L.items.length;
+  $('#listSub').innerHTML=(total?`${total-done} נותרו · ${total} פריטים`:'רשימה ריקה')+(L.cloud?`<span class="cloud-pill">${LIVE_OK[L.cloud]?(S.home?'☁︎ מסונכרן':'☁︎ משותפת'):'☁︎ מתחבר…'}</span>`:'');renderLiveCard();
+  const body=$('#listBody');body.innerHTML='';
+  const pc=$('#progCard');
+  if(total){pc.style.display='';
+    const pct=Math.round(done/total*100);
+    $('#progNum').textContent=pct+'%';
+    $('#progText').textContent=`${done} מתוך ${total}`;
+    $('#progArc').style.strokeDashoffset=113*(1-done/total);
+    $('#clearDone').style.display=done?'':'none';
+  } else pc.style.display='none';
+  if(!total){body.appendChild(el('div','empty','<div class="ic">🛒</div>הרשימה ריקה.<br>הוסף פריט ראשון למטה 👇'));return}
+  // group by category, pending first then done
+  const groups={};
+  L.items.forEach((it,idx)=>{const k=CATS.some(c=>c.id===it.cat)?it.cat:'other';(groups[k]=groups[k]||[]).push({it,idx})});
+  CATS.forEach(c=>{
+    const g=groups[c.id];if(!g)return;
+    g.sort((a,b)=>(a.it.done?1:0)-(b.it.done?1:0));
+    const box=el('div','cat');
+    const pend=g.filter(x=>!x.it.done).length;
+    box.appendChild(el('div','cat-h',`<span class="em">${c.em}</span><span>${c.name}</span><span class="cnt">${pend?pend+' נותרו':'✓ הושלם'}</span>`));
+    const items=el('div','items');
+    g.forEach(({it,idx})=>{
+      const row=el('div','item'+(it.done?' done':''));
+      row.innerHTML=`<button class="cb" aria-label="סמן">${CHK}</button>
+        <div class="nm"><b>${esc(it.name)}</b>${it.qty?`<span class="q">${esc(it.qty)}</span>`:''}</div>
+        <button class="del" aria-label="מחק">🗑</button>`;
+      row.querySelector('.cb').onclick=()=>{it.done=!it.done;save();renderList()};
+      row.querySelector('.nm').onclick=()=>{it.done=!it.done;save();renderList()};
+      row.querySelector('.del').onclick=()=>{L.items.splice(idx,1);save();renderList()};
+      items.appendChild(row);
+    });
+    box.appendChild(items);body.appendChild(box);
+  });
+}
+function quickAdd(){
+  const inp=$('#addInput'),q=$('#addQty');
+  const name=inp.value.trim();if(!name){inp.focus();return}
+  const L=curList();
+  const c=guessCat(name);
+  L.items.unshift({id:uid(),name,qty:q.value.trim(),cat:c,done:false,o:Date.now()});
+  if(!S.history.includes(name)){S.history.unshift(name);S.history=S.history.slice(0,40)}
+  save();inp.value='';q.value='';inp.focus();renderList();renderSugg();
+}
+$('#addInput')&&($('#addInput').addEventListener('keydown',e=>{if(e.key==='Enter')quickAdd()}));
+$('#addInput')&&$('#addInput').addEventListener('input',renderSugg);
+function renderSugg(){
+  const box=$('#sugg');const typed=$('#addInput').value.trim();
+  let pool=S.history.filter(h=>!curList().items.some(i=>i.name===h&&!i.done));
+  if(typed)pool=pool.filter(h=>h.includes(typed));
+  pool=pool.slice(0,12);
+  box.innerHTML='';box.style.display=pool.length?'flex':'none';
+  pool.forEach(h=>{const chip=el('button','chip');chip.textContent=h;chip.onclick=()=>{$('#addInput').value=h;quickAdd()};box.appendChild(chip)});
+}
+function clearChecked(){const L=curList();L.items=L.items.filter(i=>!i.done);save();renderList();toast('הפריטים שנאספו נוקו')}
+
+/* ===== lists ===== */
+function renderLists(){
+  const b=$('#listsBody');b.innerHTML='';
+  S.lists.forEach(L=>{
+    const done=L.items.filter(i=>i.done).length,total=L.items.length;
+    const card=el('div','listcard'+(L.id===S.cur?' active':''));
+    card.innerHTML=`<div class="ic">${esc(L.icon)}</div>
+      <div class="info"><b>${esc(L.name)}</b><span>${total?`${done}/${total} נאספו`:'ריקה'}</span>
+      ${total?`<div class="mini"><i style="width:${done/total*100}%"></i></div>`:''}</div>
+      <button class="iconbtn" aria-label="ערוך">⋯</button>`;
+    card.querySelector('.info').onclick=card.querySelector('.ic').onclick=()=>{S.cur=L.id;save();go('list');renderList();toast('עברת ל: '+L.name)};
+    card.querySelector('.iconbtn').onclick=()=>openListEdit(L.id);
+    b.appendChild(card);
+  });
+}
+const ICONS=['🛒','🧺','🏠','🎉','🥗','💊','👶','🐾','🏖️','🎁','🧽','🍕'];
+function openListEdit(id){
+  const L=id?S.lists.find(l=>l.id===id):{name:'',icon:'🛒'};
+  openSheet(`<h3>${id?'עריכת רשימה':'רשימה חדשה'}</h3>
+    <div class="field"><label>שם הרשימה</label><input class="input" id="l_name" value="${esc(L.name)}" placeholder="הסופר השבועי / פארם / מסיבה…"></div>
+    <div class="field"><label>אייקון</label><div class="iconrow" id="l_icons">${ICONS.map(ic=>`<button class="ic${ic===L.icon?' sel':''}" onclick="selIcon('${ic}')">${ic}</button>`).join('')}</div></div>
+    <input type="hidden" id="l_icon" value="${esc(L.icon)}">
+    <div class="row-btns" style="margin-top:4px">
+      <button class="btn block" onclick="saveList('${id||''}')">שמירה</button>
+      ${id&&S.lists.length>1?`<button class="btn danger" style="flex:none" onclick="delList('${id}')">מחק</button>`:''}
+    </div>`);
+}
+function selIcon(ic){$('#l_icon').value=ic;document.querySelectorAll('#l_icons .ic').forEach(b=>b.classList.toggle('sel',b.textContent===ic))}
+function saveList(id){
+  const name=$('#l_name').value.trim();if(!name){toast('צריך שם');return}
+  const icon=$('#l_icon').value;
+  if(id){const L=S.lists.find(l=>l.id===id);L.name=name;L.icon=icon}
+  else{const nl={id:uid(),name,icon,items:[]};S.lists.push(nl);S.cur=nl.id}
+  save();closeSheet();renderLists();renderList();go(id?'lists':'list')
+}
+function delList(id){
+  if(S.lists.length<=1){toast('חייבת להישאר רשימה אחת');return}
+  const dl=S.lists.find(l=>l.id===id);if(dl&&dl.cloud){unregisterList(dl);stopLive(dl.cloud)}
+  S.lists=S.lists.filter(l=>l.id!==id);
+  if(S.cur===id)S.cur=S.lists[0].id;
+  save();closeSheet();renderLists();renderList();toast('הרשימה נמחקה')
+}
+
+/* ===== share / data ===== */
+function shareList(){
+  const L=curList();let txt=`🛒 ${L.name}\n`;
+  CATS.forEach(c=>{const g=L.items.filter(i=>(i.cat||'other')===c.id);if(!g.length)return;
+    txt+=`\n${c.em} ${c.name}\n`+g.map(i=>`${i.done?'✓':'▢'} ${i.name}${i.qty?' ('+i.qty+')':''}`).join('\n')+'\n';});
+  if(navigator.share)navigator.share({title:L.name,text:txt}).catch(()=>{});
+  else{navigator.clipboard?.writeText(txt);toast('הרשימה הועתקה ✓')}
+}
+function exportData(){const b=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=el('a');a.href=u;a.download='sal-backup.json';a.click();URL.revokeObjectURL(u)}
+function seedDemo(){
+  const L=curList();
+  const demo=['חלב','לחם אחיד','ביצים','עגבניות','מלפפונים','חזה עוף','אורז','שמן קנולה','גבינה צהובה','בננות','נייר טואלט','סבון כלים','יוגורט','טונה','שוקולד'];
+  demo.forEach((n,i)=>L.items.push({id:uid(),name:n,qty:'',cat:guessCat(n),done:false,o:Date.now()-i}));
+  S.history=Array.from(new Set([...demo,...S.history])).slice(0,40);
+  save();renderList();go('list');toast('נטענה רשימת דוגמה')
+}
+function wipeAll(){openSheet(`<h3>איפוס מלא?</h3><p style="color:var(--txt2)">כל הרשימות והפריטים יימחקו מהמכשיר. אי אפשר לבטל. רשימות משותפות נשארות אצל השותפים.</p>
+  <div class="row-btns" style="margin-top:14px"><button class="btn block ghost" onclick="closeSheet()">ביטול</button><button class="btn block danger" onclick="resetHome();stopAllLive();try{localStorage.removeItem(PEND_KEY);localStorage.removeItem(BASE_KEY)}catch(e){}S=DEFAULT();save();closeSheet();renderList();go('list');toast('אופס')">מחק הכל</button></div>`)}
+
+
+/* ===== cloud sync (Firestore) =====
+   sal_lists/{token}: {items:{id:{name,qty,cat,done,o}},name,icon,t}; token = long random secret.
+   sal_homes/{home}: {lists:{token:{name,icon,lid}},t} — the household directory: connect a device once, all lists sync.
+   Safety rules (learned the hard way):
+   - every write is ONE deep-merge set of only the changed items → two devices never wipe each other;
+   - unsent edits are remembered (pend) and replayed with a 3-way merge against the last CONFIRMED cloud copy (base),
+     so a device that was closed for days can't delete other devices' additions or resurrect their deletions;
+   - a cached "doc doesn't exist" snapshot while offline is ignored (wait for the server). */
+const FB_CONFIG={apiKey:"AIzaSyBC3mvpnaMF-idW26lkkKpXyLo8ePE6apQ",authDomain:"ravakim-budapest.firebaseapp.com",projectId:"ravakim-budapest",storageBucket:"ravakim-budapest.firebasestorage.app",messagingSenderId:"864932417069",appId:"1:864932417069:web:773c95c4c286874105f2a4"};
+const PEND_KEY='shoplist.pend',BASE_KEY='shoplist.base',LIVE={},LASTC={},LIVE_OK={},LASTM={},INF={};let FB=null;
+const OKID=/^[a-z0-9]{1,64}$/;
+function nest(upd){const o={};Object.entries(upd).forEach(([k,v])=>{const p=k.split('.');let c=o;for(let i=0;i<p.length-1;i++)c=c[p[i]]=c[p[i]]||{};c[p[p.length-1]]=v});return o}
+function loadFB(){if(FB)return FB;const sc=src=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=no;document.head.appendChild(e)});
+  FB=sc('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js').then(()=>sc('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js'))
+    .then(()=>{if(!firebase.apps.length)firebase.initializeApp(FB_CONFIG);return firebase.firestore()}).catch(e=>{FB=null;throw e});return FB}
+const newToken=()=>{const a=new Uint8Array(18);crypto.getRandomValues(a);return Array.from(a,b=>'abcdefghijkmnpqrstuvwxyz23456789'[b%32]).join('')+'x'+Date.now().toString(36)};
+const jget=k=>{try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return{}}},jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const pend=()=>jget(PEND_KEY);
+const setPend=(t,v)=>{const p=pend();if(v)p[t]=1;else delete p[t];jset(PEND_KEY,p)};
+const getBase=t=>jget(BASE_KEY)[t];
+const setBase=(t,v)=>{const b=jget(BASE_KEY);if(v)b[t]=v;else delete b[t];jset(BASE_KEY,b)};
+const clean=it=>({name:String(it.name||''),qty:String(it.qty||''),cat:it.cat||'other',done:!!it.done,o:+it.o||0});
+const same=(a,b)=>JSON.stringify(clean(a))===JSON.stringify(clean(b));
+const okItems=items=>{const o={};Object.entries(items||{}).forEach(([k,v])=>{if(OKID.test(k)&&v&&typeof v==='object')o[k]=clean(v)});return o};
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function startLive(token){
+  if(!token||LIVE[token])return;LIVE[token]='starting';
+  loadFB().then(db=>{
+    if(LIVE[token]!=='starting')return;           // stopped while loading
+    let first=true;
+    LIVE[token]=db.collection('sal_lists').doc(token).onSnapshot(snap=>{
+      if(first&&snap.metadata.fromCache&&!snap.exists)return;   // offline cache knows nothing yet → wait for the server
+      const L=S.lists.find(l=>l.cloud===token);if(!L)return;
+      LIVE_OK[token]=true;
+      const d=snap.data()||{},items=okItems(d.items);
+      const confirmed=!snap.metadata.hasPendingWrites&&!snap.metadata.fromCache;
+      if(first){first=false;
+        if(L._merge){   // joining / first registration: keep this device's items AND the cloud's
+          delete L._merge;LASTC[token]=items;if(confirmed)setBase(token,items);
+          const have=new Set(Object.keys(items)),names=new Set(Object.values(items).map(v=>norm(v.name)));
+          const extra=L.items.filter(i=>!have.has(i.id)&&!names.has(norm(i.name||'')));
+          L.items=[...Object.entries(items).map(([id,v])=>({id,...v})),...extra].sort((a,b)=>(b.o||0)-(a.o||0));
+          if(snap.exists&&d.name){L.name=String(d.name);L.icon=String(d.icon||L.icon);LASTM[token]=L.name+'|'+L.icon}
+          pushDiff(L);persist();return renderAll()}
+        if(pend()[token]){  // unsent edits from last time → 3-way merge: replay only what THIS device changed since the last confirmed copy
+          const base=getBase(token)||{},loc={},m=Object.assign({},items);
+          L.items.forEach(i=>{loc[i.id]=clean(i)});
+          Object.keys(loc).forEach(id=>{if(!base[id]||!same(base[id],loc[id]))m[id]=loc[id]});
+          Object.keys(base).forEach(id=>{if(!loc[id])delete m[id]});
+          LASTC[token]=items;if(confirmed)setBase(token,items);
+          L.items=Object.entries(m).map(([id,v])=>({id,...v})).sort((a,b)=>(b.o||0)-(a.o||0));
+          if(d.name){L.name=String(d.name);L.icon=String(d.icon||L.icon);LASTM[token]=L.name+'|'+L.icon}
+          pushDiff(L);persist();return renderAll()}
+      }
+      LASTC[token]=items;if(confirmed)setBase(token,items);
+      if(d.name){L.name=String(d.name);L.icon=String(d.icon||L.icon)}LASTM[token]=(L.name||'')+'|'+(L.icon||'');
+      L.items=Object.entries(items).map(([id,v])=>({id,...v})).sort((a,b)=>(b.o||0)-(a.o||0));
+      persist();renderAll();
+    },err=>{LIVE_OK[token]=false;delete LIVE[token];renderAll();toast(err.code==='permission-denied'?'אין גישה לרשימה המשותפת':'אין חיבור לענן כרגע')});
+  }).catch(()=>{delete LIVE[token]});
+}
+function stopLive(t){const u=LIVE[t];if(typeof u==='function')u();delete LIVE[t];delete LASTC[t];delete LIVE_OK[t];delete LASTM[t];setPend(t,0);setBase(t,null)}
+function stopAllLive(){Object.keys(LIVE).forEach(stopLive)}
+/* push only what changed vs. the last cloud copy; if not connected yet, remember that there is something to send */
+function pushDiff(L){
+  const t=L.cloud;if(!t)return;
+  const last=LASTC[t];if(!last||typeof LIVE[t]!=='function'){setPend(t,1);return}
+  const ref=firebase.firestore().collection('sal_lists').doc(t),upd={},cur={};
+  L.items.forEach(it=>{if(!it.o)it.o=Date.now();cur[it.id]=clean(it);if(!last[it.id]||!same(last[it.id],cur[it.id]))upd['items.'+it.id]=cur[it.id]});
+  Object.keys(last).forEach(id=>{if(!cur[id])upd['items.'+id]=firebase.firestore.FieldValue.delete()});
+  const meta=(L.name||'')+'|'+(L.icon||'');
+  if(LASTM[t]!==meta){upd.name=L.name||'רשימה';upd.icon=L.icon||'🛒'}
+  if(!Object.keys(upd).length){if(!INF[t])setPend(t,0);return}
+  upd.t=Date.now();setPend(t,1);LASTC[t]=cur;LASTM[t]=meta;INF[t]=(INF[t]||0)+1;
+  ref.set(nest(upd),{merge:true}).then(()=>{if(--INF[t]<=0){INF[t]=0;setPend(t,0);if(LASTC[t])setBase(t,LASTC[t])}})   // server confirmed → this is now the agreed copy
+    .catch(e=>{INF[t]=Math.max(0,(INF[t]||1)-1);if(e&&e.code==='permission-denied')toast('השינוי נדחה על ידי השרת')});
+}
+/* ===== household ===== */
+let HOME_UNSUB=null,HOME_OK=false,LAST_HOME={};
+const homeSeen=()=>new Set(S.homeSeen||[]);
+function startHome(){
+  if(!S.home||HOME_UNSUB)return;HOME_UNSUB='starting';const myHome=S.home;
+  loadFB().then(db=>{
+    if(HOME_UNSUB!=='starting'||S.home!==myHome)return;
+    HOME_UNSUB=db.collection('sal_homes').doc(myHome).onSnapshot(snap=>{
+      if(snap.metadata.fromCache&&!snap.exists&&!HOME_OK)return;
+      const lists={};Object.entries((snap.data()||{}).lists||{}).forEach(([k,v])=>{if(/^[a-z0-9]{20,64}$/.test(k)&&v)lists[k]=v});
+      const del=new Set(S.homeDel||[]);
+      if(del.size){const upd={t:Date.now()};del.forEach(k=>{upd['lists.'+k]=firebase.firestore.FieldValue.delete();delete lists[k]});
+        db.collection('sal_homes').doc(myHome).update(upd).then(()=>{S.homeDel=[];persist()}).catch(()=>{})}
+      const seen=homeSeen();
+      Object.entries(lists).forEach(([tok,v])=>{                       // a list created on another device
+        if(S.lists.some(l=>l.cloud===tok))return;
+        const lid=OKID.test(v.lid||'')?v.lid:(tok.startsWith(myHome+'l')?tok.slice(myHome.length+1):'');
+        const mine=S.lists.find(l=>!l.cloud&&!l.noSync&&lid&&l.id===lid);   // same list on this device (e.g. the default one) → merge, no duplicate
+        if(mine){mine.cloud=tok;mine._merge=true;mine.items.forEach((it,i)=>{if(!it.o)it.o=Date.now()-i});startLive(tok);return}
+        let id=lid&&!S.lists.some(l=>l.id===lid)?lid:uid();
+        S.lists.push({id,name:String(v.name||'רשימה'),icon:String(v.icon||'🛒'),items:[],cloud:tok});startLive(tok)});
+      S.lists.filter(l=>l.cloud&&seen.has(l.cloud)&&!lists[l.cloud]).forEach(l=>{   // deleted on another device
+        stopLive(l.cloud);S.lists=S.lists.filter(x=>x!==l);
+        if(!S.lists.length)S.lists.push({id:uid(),name:'הסופר השבועי',icon:'🛒',items:[]});
+        if(!S.lists.some(x=>x.id===S.cur))S.cur=S.lists[0].id});
+      S.homeSeen=Object.keys(lists);LAST_HOME=lists;HOME_OK=true;
+      registerLists();persist();renderAll();
+    },err=>{HOME_UNSUB=null;HOME_OK=false;renderAll();toast(err.code==='permission-denied'?'אין גישה לסנכרון':'אין חיבור לענן כרגע')});
+  }).catch(()=>{if(HOME_UNSUB==='starting')HOME_UNSUB=null});
+}
+function registerLists(){   // every local list gets its own cloud doc + an entry in the household directory
+  if(!S.home||typeof HOME_UNSUB!=='function'||!HOME_OK)return;
+  const upd={},seen=homeSeen();
+  S.lists.forEach(L=>{
+    if(L.noSync)return;
+    if(!L.cloud){L.cloud=newToken();L._merge=true;L.items.forEach((it,i)=>{if(!it.o)it.o=Date.now()-i})}
+    if(seen.has(L.cloud)&&!LAST_HOME[L.cloud])return;     // removed by another device — never re-add
+    if(!LIVE[L.cloud])startLive(L.cloud);
+    const k=LAST_HOME[L.cloud];if(!k||k.name!==L.name||k.icon!==L.icon){const e={name:L.name,icon:L.icon,lid:L.id};upd['lists.'+L.cloud]=e;LAST_HOME[L.cloud]=e}
+  });
+  if(!Object.keys(upd).length)return;
+  upd.t=Date.now();firebase.firestore().collection('sal_homes').doc(S.home).set(nest(upd),{merge:true}).catch(()=>{});
+}
+function unregisterList(L){
+  if(!S.home||!L.cloud)return;delete LAST_HOME[L.cloud];S.homeSeen=(S.homeSeen||[]).filter(k=>k!==L.cloud);
+  if(typeof HOME_UNSUB==='function')firebase.firestore().collection('sal_homes').doc(S.home).update({['lists.'+L.cloud]:firebase.firestore.FieldValue.delete(),t:Date.now()}).catch(()=>{S.homeDel=[...new Set([...(S.homeDel||[]),L.cloud])];persist()});
+  else S.homeDel=[...new Set([...(S.homeDel||[]),L.cloud])];   // offline → delete when connected
+}
+function homeLink(){return location.origin+location.pathname+'#home='+S.home}
+function openHomeLink(){
+  if(!S.home){S.home=newToken();S.homeSeen=[];S.homeDel=[];persist();startHome()}
+  const link=homeLink(),msg=`🛒 סל, הרשימות שלנו מסונכרנות. לפתוח פעם אחת בכל טלפון או מחשב:\n${link}`;
+  openSheet(`<h3>📱 חיבור מכשיר נוסף</h3>
+    <p style="color:var(--txt2);margin-top:0">פותחים את הקישור <b>פעם אחת</b> בכל טלפון או מחשב שלכם. מאותו רגע כל הרשימות מתעדכנות מיד בכל המכשירים, כולל רשימות חדשות. במחשב: שלחו לעצמכם בוואטסאפ ופתחו בוואטסאפ ווב, או סרקו את הקוד מהטלפון.</p>
+    <div id="qrBox" style="display:grid;place-items:center;margin:4px 0 10px"></div>
+    <div class="sharebox">${esc(link)}</div>
+    <div class="row-btns"><a class="btn block" style="text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">וואטסאפ</a>
+    <button class="btn block ghost" id="cpHome">העתק קישור</button></div>
+    <p style="color:var(--txt3);font-size:12px;margin:10px 0 0">מי שמקבל את הקישור רואה ועורך את כל הרשימות. שלחו רק לבני הבית.</p>`);
+  $('#cpHome').onclick=()=>{navigator.clipboard?.writeText(link);toast('הקישור הועתק ✓')};
+  drawQR(link);
+}
+function drawQR(text){const box=$('#qrBox');if(!box)return;
+  const go=()=>{try{box.innerHTML='';new QRCode(box,{text,width:150,height:150,correctLevel:QRCode.CorrectLevel.M});box.style.background='#fff';box.style.padding='10px';box.style.borderRadius='14px';box.style.justifySelf='center'}catch(e){}};
+  if(window.QRCode)return go();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';sc.onload=go;document.head.appendChild(sc)}
+function unpairDevice(){openSheet(`<h3>לנתק את המכשיר הזה?</h3><p style="color:var(--txt2)">הרשימות יישארו בטלפון הזה אבל יפסיקו להתעדכן. בשאר המכשירים לא נמחק כלום.</p>
+  <div class="row-btns" style="margin-top:14px"><button class="btn block ghost" onclick="closeSheet()">ביטול</button><button class="btn block danger" onclick="doUnpair()">נתק</button></div>`)}
+function resetHome(){if(typeof HOME_UNSUB==='function')HOME_UNSUB();HOME_UNSUB=null;HOME_OK=false;
+  const mine=new Set([...(S.homeSeen||[]),...Object.keys(LAST_HOME)]);
+  S.lists.forEach(L=>{if(L.cloud&&mine.has(L.cloud)){stopLive(L.cloud);delete L.cloud}delete L.noSync});
+  S.home=null;S.homeSeen=[];S.homeDel=[];LAST_HOME={}}
+function doUnpair(){resetHome();persist();closeSheet();renderAll();toast('המכשיר נותק')}
+function renderSyncUI(){
+  const b=$('#syncBanner');if(b)b.innerHTML=(!S.home&&!S.syncHide)?`<div class="sync-ban"><span class="sb-ic">📱</span><div style="flex:1"><b>לסנכרן עם עוד טלפון או מחשב?</b><div>חיבור חד-פעמי בקישור, ומאז כל מה שמוסיפים מתעדכן בכל המכשירים.</div></div>
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="btn sm" onclick="openHomeLink()">חבר</button><button class="btn sm ghost" onclick="S.syncHide=1;persist();renderSyncUI()">לא עכשיו</button></div></div>`:'';
+  const c=$('#homeCard');if(c)c.innerHTML=S.home?`<b>☁︎ סנכרון בין המכשירים שלי: ${HOME_OK?'מחובר ✓':'מתחבר…'}</b>
+    <span style="font-size:13px;color:var(--txt2)">כל ${S.lists.length} הרשימות מתעדכנות בכל המכשירים שחוברו.</span>
+    <div class="row-btns"><button class="btn sm" onclick="openHomeLink()">📱 חבר מכשיר נוסף</button><button class="btn sm ghost" style="color:var(--red)" onclick="unpairDevice()">נתק מכשיר זה</button></div>`
+    :`<b>☁︎ סנכרון בין המכשירים שלי</b><span style="font-size:13px;color:var(--txt2)">כרגע הרשימות שמורות רק במכשיר הזה. חברו את הטלפון השני והמחשב פעם אחת, ומאז כל שינוי מופיע בכולם מיד.</span>
+    <button class="btn sm" style="align-self:flex-start" onclick="openHomeLink()">📱 חבר מכשיר</button>`;
+}
+window.cloudSync=()=>{registerLists();S.lists.forEach(L=>{if(L.cloud)pushDiff(L)})};
+function liveLink(t){return location.origin+location.pathname+'#join='+t}
+function openLiveShare(){
+  const L=curList();
+  if(L.cloud&&S.home&&L.cloud.startsWith(S.home)){toast('את הרשימה הזו אי אפשר לשתף בנפרד. צור רשימה חדשה ושתף אותה');return}
+  if(!L.cloud){L.cloud=newToken();L.items.forEach((it,i)=>{if(!it.o)it.o=Date.now()-i});L._merge=true;persist();startLive(L.cloud);if(S.home)registerLists();renderList()}
+  const link=liveLink(L.cloud),msg=`🛒 הרשימה "${L.name}" שלנו בסל, מתעדכנת אצל שנינו:\n${link}`;
+  openSheet(`<h3>☁︎ שיתוף "${esc(L.name)}"</h3>
+    <p style="color:var(--txt2);margin-top:0">כל מי שפותח את הקישור מצטרף לרשימה הזו בלבד, ויכול להוסיף, לסמן ולמחוק. השינויים מופיעים מיד אצל כולם. שלח רק למי שאתה סומך עליו.</p>
+    <div class="sharebox">${esc(link)}</div>
+    <div class="row-btns"><a class="btn block" style="text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">וואטסאפ</a>
+    <button class="btn block ghost" id="cpList">העתק קישור</button></div>
+    ${S.home?'':`<button class="btn block ghost" style="margin-top:8px;color:var(--red)" onclick="unshareHere()">הפסק סנכרון בטלפון הזה</button>`}`);
+  $('#cpList').onclick=()=>{navigator.clipboard?.writeText(link);toast('הקישור הועתק ✓')};
+}
+function unshareHere(){const L=curList();if(L.cloud&&!S.home){stopLive(L.cloud);delete L.cloud;persist()}closeSheet();renderList();toast('הרשימה נשארה רק בטלפון הזה')}
+function renderLiveCard(){const L=curList(),b=$('#liveBtn');if(!b)return;b.textContent=L.cloud?'🔗 הצג קישור שיתוף':'🔗 שתף את הרשימה הזו'}
+function joinFromHash(){
+  const h=location.hash.match(/home=([a-z0-9]{20,40})/);
+  if(h){history.replaceState(null,'',location.pathname);
+    if(S.home!==h[1]){if(S.home)resetHome();S.home=h[1];S.homeSeen=[];S.homeDel=[];S.syncHide=1;persist();toast('המכשיר חובר ✓ הרשימות מסתנכרנות')}
+    return}
+  const m=location.hash.match(/join=([a-z0-9]{20,64})/);if(!m)return;const t=m[1];
+  history.replaceState(null,'',location.pathname);
+  let L=S.lists.find(l=>l.cloud===t);
+  if(!L){L={id:uid(),name:'רשימה משותפת',icon:'🛒',items:[],cloud:t};S.lists.push(L);setPend(t,0);setBase(t,null)}
+  S.cur=L.id;persist();toast('הצטרפת לרשימה המשותפת ☁︎');
+}
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderAll(){renderList();renderSugg();renderSyncUI();if($('#sc-lists').classList.contains('on'))renderLists()}
+/* reconnect after being offline / coming back to the app */
+function reviveSync(){S.lists.forEach(L=>{if(L.cloud&&!LIVE[L.cloud])startLive(L.cloud)});if(S.home&&!HOME_UNSUB)startHome()}
+window.addEventListener('online',reviveSync);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reviveSync()});
+
+/* ===== theme / boot ===== */
+function applyTheme(){document.documentElement.setAttribute('data-theme',S.theme==='auto'?'':S.theme);$('#themeBtn').textContent=S.theme==='dark'?'☀':S.theme==='light'?'☾':'◐'}
+$('#themeBtn').onclick=()=>{S.theme=S.theme==='auto'?'light':S.theme==='light'?'dark':'auto';save();applyTheme()};
+function boot(){
+  joinFromHash();
+  applyTheme();renderList();renderSugg();
+  S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});startHome();renderSyncUI();
+  window.addEventListener('hashchange',()=>{joinFromHash();S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});startHome();go('list');renderAll()});
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('../sw.js').catch(()=>{});
+}
+boot();
+</script>
+</body>
+</html>
