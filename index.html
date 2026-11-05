@@ -185,6 +185,8 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 .sheet-bg{background:rgba(5,20,12,.35);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .sheet{background:var(--card);border:1px solid var(--glass-brd);border-bottom:none}
 .input,.addrow .qty{background:var(--card2);border-color:var(--ring)}
+.sync-ban{display:flex;gap:10px;align-items:center;background:var(--accent-soft);border:1px solid var(--accent);border-radius:18px;padding:12px;margin-bottom:12px;font-size:13px;line-height:1.5}
+.sync-ban .sb-ic{font-size:26px}.sync-ban b{font-size:14px}
 .cloud-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px;margin-inline-start:6px}
 .sharebox{display:flex;gap:6px;align-items:center;background:var(--card2);border:1px solid var(--ring);border-radius:12px;padding:8px 10px;font-size:12px;direction:ltr;word-break:break-all;margin-bottom:10px}
 @media (prefers-reduced-transparency:reduce){:root{--card:#fff;--card2:#f6faf8}}
@@ -202,6 +204,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   <!-- LIST -->
   <section class="screen on" id="sc-list">
     <div class="wrap">
+      <div id="syncBanner"></div>
       <div class="prog" id="progCard" style="display:none">
         <div class="ring"><svg width="44" height="44"><circle cx="22" cy="22" r="18" fill="none" stroke="var(--line)" stroke-width="5"/><circle id="progArc" cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="113" stroke-dashoffset="113"/></svg><span class="num" id="progNum">0%</span></div>
         <div class="lbl"><b id="progText">0 מתוך 0</b><div>פריטים שנאספו</div></div>
@@ -224,9 +227,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   <section class="screen" id="sc-settings">
     <div class="wrap">
       <h2 class="page">הגדרות</h2>
+      <div class="listcard" id="homeCard" style="flex-direction:column;align-items:stretch;gap:10px"></div>
       <div class="listcard" style="flex-direction:column;align-items:stretch;gap:10px">
-        <b>☁︎ רשימה משותפת בזמן אמת</b>
-        <span style="font-size:13px;color:var(--txt2)" id="liveTxt">שלח קישור לבן/בת הזוג. כל מי שפותח אותו רואה ועורך את אותה רשימה, והשינויים מתעדכנים מיד בכל הטלפונים.</span>
+        <b>שיתוף רשימה אחת עם מישהו אחר</b>
+        <span style="font-size:13px;color:var(--txt2)" id="liveTxt">קישור לרשימה הנוכחית בלבד, למשל לחבר שקונה בשבילכם. הוא לא יראה את שאר הרשימות.</span>
         <button class="btn sm" onclick="openLiveShare()" style="align-self:flex-start" id="liveBtn">🔗 שתף את הרשימה הזו</button>
       </div>
       <div class="listcard" style="flex-direction:column;align-items:stretch;gap:10px">
@@ -334,7 +338,7 @@ function renderList(){
   const L=curList();
   $('#listTitle').childNodes[0].nodeValue=L.icon+' '+L.name;
   const done=L.items.filter(i=>i.done).length,total=L.items.length;
-  $('#listSub').innerHTML=(total?`${total-done} נותרו · ${total} פריטים`:'רשימה ריקה')+(L.cloud?`<span class="cloud-pill">${LIVE_OK[L.cloud]?'☁︎ משותפת':'☁︎ מתחבר…'}</span>`:'');renderLiveCard();
+  $('#listSub').innerHTML=(total?`${total-done} נותרו · ${total} פריטים`:'רשימה ריקה')+(L.cloud?`<span class="cloud-pill">${LIVE_OK[L.cloud]?(S.home?'☁︎ מסונכרן':'☁︎ משותפת'):'☁︎ מתחבר…'}</span>`:'');renderLiveCard();
   const body=$('#listBody');body.innerHTML='';
   const pc=$('#progCard');
   if(total){pc.style.display='';
@@ -426,7 +430,7 @@ function saveList(id){
 }
 function delList(id){
   if(S.lists.length<=1){toast('חייבת להישאר רשימה אחת');return}
-  const dl=S.lists.find(l=>l.id===id);if(dl&&dl.cloud)stopLive(dl.cloud);
+  const dl=S.lists.find(l=>l.id===id);if(dl&&dl.cloud){unregisterList(dl);stopLive(dl.cloud)}
   S.lists=S.lists.filter(l=>l.id!==id);
   if(S.cur===id)S.cur=S.lists[0].id;
   save();closeSheet();renderLists();renderList();toast('הרשימה נמחקה')
@@ -457,6 +461,8 @@ function wipeAll(){openSheet(`<h3>איפוס מלא?</h3><p style="color:var(--t
    Items are a map id→item, written per item (merge), so two phones adding at once never overwrite each other. */
 const FB_CONFIG={apiKey:"AIzaSyBC3mvpnaMF-idW26lkkKpXyLo8ePE6apQ",authDomain:"ravakim-budapest.firebaseapp.com",projectId:"ravakim-budapest",storageBucket:"ravakim-budapest.firebasestorage.app",messagingSenderId:"864932417069",appId:"1:864932417069:web:773c95c4c286874105f2a4"};
 const PEND_KEY='shoplist.pend',LIVE={},LASTC={},LIVE_OK={},LASTM={};let FB=null;
+/* dotted update map {'items.x':v,...} → nested object for ONE deep-merge write (creates the doc if missing, never wipes other entries) */
+function nest(upd){const o={};Object.entries(upd).forEach(([k,v])=>{const p=k.split('.');let c=o;for(let i=0;i<p.length-1;i++)c=c[p[i]]=c[p[i]]||{};c[p[p.length-1]]=v});return o}
 function loadFB(){if(FB)return FB;const sc=src=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=no;document.head.appendChild(e)});
   FB=sc('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js').then(()=>sc('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js'))
     .then(()=>{if(!firebase.apps.length)firebase.initializeApp(FB_CONFIG);return firebase.firestore()}).catch(e=>{FB=null;throw e});return FB}
@@ -473,6 +479,13 @@ function startLive(token){
       LIVE_OK[token]=true;
       const d=snap.data()||{},items=d.items||{};
       if(first){first=false;
+        if(L._merge){  // this device's copy + the cloud copy → keep both (no item lost when a device joins)
+          delete L._merge;LASTC[token]=items;
+          const have=new Set(Object.keys(items)),names=new Set(Object.values(items).map(v=>norm(v.name||'')));
+          const extra=L.items.filter(i=>!have.has(i.id)&&!names.has(norm(i.name||'')));
+          L.items=[...Object.entries(items).map(([id,v])=>({id,...v})),...extra].sort((a,b)=>(b.o||0)-(a.o||0));
+          if(d.name&&snap.exists){L.name=d.name;L.icon=d.icon||L.icon}
+          pushDiff(L);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}return renderAll()}
         if(!snap.exists||pend()[token]){LASTC[token]=items;pushDiff(L);return renderAll()}}  // newer offline edits on this phone → send them
       LASTC[token]=items;
       if(d.name)L.name=d.name;if(d.icon)L.icon=d.icon;LASTM[token]=(L.name||'')+'|'+(L.icon||'');
@@ -495,9 +508,78 @@ function pushDiff(L){
   if(!Object.keys(upd).length&&LASTM[t]===meta)return;
   upd.name=L.name||'רשימה';upd.icon=L.icon||'🛒';upd.t=Date.now();
   setPend(t,1);LASTC[t]=Object.assign({},cur);LASTM[t]=meta;
-  ref.set({items:{},t:Date.now()},{merge:true}).then(()=>ref.update(upd)).then(()=>setPend(t,0)).catch(()=>{});
+  ref.set(nest(upd),{merge:true}).then(()=>setPend(t,0)).catch(()=>{});
 }
-window.cloudSync=()=>S.lists.forEach(L=>{if(L.cloud)pushDiff(L)});
+/* ===== household sync: connect a device once, then ALL lists sync between all its devices =====
+   sal_homes/{home}.lists = { <listToken>: {name,icon} }; each list's items live in sal_lists/<home>l<listId>. */
+let HOME_UNSUB=null,HOME_OK=false,HOME_SEEN=new Set(),LAST_HOME={};
+const homeTok=L=>S.home+'l'+L.id;
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function startHome(){
+  if(!S.home||HOME_UNSUB)return;HOME_UNSUB='starting';
+  loadFB().then(db=>{
+    HOME_UNSUB=db.collection('sal_homes').doc(S.home).onSnapshot(snap=>{
+      HOME_OK=true;const lists=(snap.data()||{}).lists||{};
+      Object.entries(lists).forEach(([tok,v])=>{          // a list created on another device
+        if(S.lists.some(l=>l.cloud===tok))return;
+        const same=S.lists.find(l=>!l.cloud&&homeTok(l)===tok);   // same list on this device (e.g. the default one) → merge, don't duplicate
+        if(same){same.cloud=tok;same._merge=true;same.items.forEach((it,i)=>{if(!it.o)it.o=Date.now()-i});startLive(tok);return}
+        let id=tok.startsWith(S.home+'l')?tok.slice(S.home.length+1):uid();if(S.lists.some(l=>l.id===id))id=uid();
+        S.lists.push({id,name:v.name||'רשימה',icon:v.icon||'🛒',items:[],cloud:tok});startLive(tok)});
+      S.lists.filter(l=>l.cloud&&HOME_SEEN.has(l.cloud)&&!lists[l.cloud]).forEach(l=>{   // deleted on another device
+        if(S.lists.length<=1)return;stopLive(l.cloud);S.lists=S.lists.filter(x=>x!==l);if(S.cur===l.id)S.cur=S.lists[0].id});
+      HOME_SEEN=new Set(Object.keys(lists));LAST_HOME=Object.assign({},lists);
+      registerLists();persist();renderAll();
+    },err=>{HOME_UNSUB=null;HOME_OK=false;renderAll();toast(err.code==='permission-denied'?'אין גישה לסנכרון':'אין חיבור לענן כרגע')});
+  }).catch(()=>{HOME_UNSUB=null;toast('אין חיבור לענן, נשמר במכשיר')});
+}
+function registerLists(){   // every local list gets a cloud copy + an entry in the household directory
+  if(!S.home||typeof HOME_UNSUB!=='function')return;
+  const upd={};
+  S.lists.forEach(L=>{
+    if(!L.cloud){L.cloud=homeTok(L);L._merge=true;L.items.forEach((it,i)=>{if(!it.o)it.o=Date.now()-i})}
+    if(!LIVE[L.cloud])startLive(L.cloud);
+    const k=LAST_HOME[L.cloud];if(!k||k.name!==L.name||k.icon!==L.icon){upd['lists.'+L.cloud]={name:L.name,icon:L.icon};LAST_HOME[L.cloud]={name:L.name,icon:L.icon};HOME_SEEN.add(L.cloud)}
+  });
+  if(!Object.keys(upd).length)return;
+  upd.t=Date.now();const ref=firebase.firestore().collection('sal_homes').doc(S.home);
+  ref.set(nest(upd),{merge:true}).catch(()=>{});
+}
+function unregisterList(L){
+  if(!S.home||!L.cloud||typeof HOME_UNSUB!=='function')return;delete LAST_HOME[L.cloud];HOME_SEEN.delete(L.cloud);
+  firebase.firestore().collection('sal_homes').doc(S.home).update({['lists.'+L.cloud]:firebase.firestore.FieldValue.delete(),t:Date.now()}).catch(()=>{});
+}
+function homeLink(){return location.origin+location.pathname+'#home='+S.home}
+function openHomeLink(){
+  if(!S.home){S.home=newToken();persist();startHome()}
+  const link=homeLink(),msg=`🛒 סל, הרשימות שלנו מסונכרנות. לפתוח פעם אחת בכל טלפון או מחשב:\n${link}`;
+  openSheet(`<h3>📱 חיבור מכשיר נוסף</h3>
+    <p style="color:var(--txt2);margin-top:0">פותחים את הקישור <b>פעם אחת</b> בכל טלפון או מחשב שלכם. מאותו רגע כל הרשימות מתעדכנות מיד בכל המכשירים, כולל רשימות חדשות. במחשב: שלחו לעצמכם בוואטסאפ ופתחו בוואטסאפ ווב, או סרקו את הקוד מהטלפון.</p>
+    <div id="qrBox" style="display:grid;place-items:center;margin:4px 0 10px"></div>
+    <div class="sharebox">${esc(link)}</div>
+    <div class="row-btns"><a class="btn block" style="text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">וואטסאפ</a>
+    <button class="btn block ghost" onclick="navigator.clipboard?.writeText('${link}');toast('הקישור הועתק ✓')">העתק קישור</button></div>
+    <p style="color:var(--txt3);font-size:12px;margin:10px 0 0">מי שמקבל את הקישור רואה ועורך את כל הרשימות. שלחו רק לבני הבית.</p>`);
+  drawQR(link);
+}
+function drawQR(text){const box=$('#qrBox');if(!box)return;
+  const go=()=>{try{box.innerHTML='';new QRCode(box,{text,width:150,height:150,correctLevel:QRCode.CorrectLevel.M});box.style.background='#fff';box.style.padding='10px';box.style.borderRadius='14px';box.style.justifySelf='center'}catch(e){}};
+  if(window.QRCode)return go();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';sc.onload=go;document.head.appendChild(sc)}
+function unpairDevice(){openSheet(`<h3>לנתק את המכשיר הזה?</h3><p style="color:var(--txt2)">הרשימות יישארו בטלפון הזה אבל יפסיקו להתעדכן. בשאר המכשירים לא נמחק כלום.</p>
+  <div class="row-btns" style="margin-top:14px"><button class="btn block ghost" onclick="closeSheet()">ביטול</button><button class="btn block danger" onclick="doUnpair()">נתק</button></div>`)}
+function doUnpair(){if(typeof HOME_UNSUB==='function')HOME_UNSUB();HOME_UNSUB=null;HOME_OK=false;
+  S.lists.forEach(L=>{if(L.cloud&&S.home&&L.cloud.startsWith(S.home)){stopLive(L.cloud);delete L.cloud}});S.home=null;HOME_SEEN=new Set();LAST_HOME={};
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}closeSheet();renderAll();toast('המכשיר נותק')}
+function renderSyncUI(){
+  const b=$('#syncBanner');if(b)b.innerHTML=(!S.home&&!S.syncHide)?`<div class="sync-ban"><span class="sb-ic">📱</span><div style="flex:1"><b>לסנכרן עם עוד טלפון או מחשב?</b><div>חיבור חד-פעמי בקישור, ומאז כל מה שמוסיפים מתעדכן בכל המכשירים.</div></div>
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="btn sm" onclick="openHomeLink()">חבר</button><button class="btn sm ghost" onclick="S.syncHide=1;persist();renderSyncUI()">לא עכשיו</button></div></div>`:'';
+  const c=$('#homeCard');if(c)c.innerHTML=S.home?`<b>☁︎ סנכרון בין המכשירים שלי: ${HOME_OK?'מחובר ✓':'מתחבר…'}</b>
+    <span style="font-size:13px;color:var(--txt2)">כל ${S.lists.length} הרשימות מתעדכנות בכל המכשירים שחוברו.</span>
+    <div class="row-btns"><button class="btn sm" onclick="openHomeLink()">📱 חבר מכשיר נוסף</button><button class="btn sm ghost" style="color:var(--red)" onclick="unpairDevice()">נתק מכשיר זה</button></div>`
+    :`<b>☁︎ סנכרון בין המכשירים שלי</b><span style="font-size:13px;color:var(--txt2)">כרגע הרשימות שמורות רק במכשיר הזה. חברו את הטלפון השני והמחשב פעם אחת, ומאז כל שינוי מופיע בכולם מיד.</span>
+    <button class="btn sm" style="align-self:flex-start" onclick="openHomeLink()">📱 חבר מכשיר</button>`;
+}
+window.cloudSync=()=>{registerLists();S.lists.forEach(L=>{if(L.cloud)pushDiff(L)})};
 function liveLink(t){return location.origin+location.pathname+'#join='+t}
 function openLiveShare(){
   const L=curList();
@@ -514,6 +596,10 @@ function openLiveShare(){
 function unshareHere(){const L=curList();if(L.cloud){stopLive(L.cloud);delete L.cloud;save()}closeSheet();renderList();toast('הרשימה נשארה רק בטלפון הזה')}
 function renderLiveCard(){const L=curList(),b=$('#liveBtn');if(!b)return;b.textContent=L.cloud?'🔗 הצג קישור שיתוף':'🔗 שתף את הרשימה הזו'}
 function joinFromHash(){
+  const h=location.hash.match(/home=([a-z0-9]{20,40})/);
+  if(h){history.replaceState(null,'',location.pathname);
+    if(S.home!==h[1]){if(S.home)doUnpair();S.home=h[1];S.syncHide=1;persist();toast('המכשיר חובר ✓ הרשימות מסתנכרנות')}
+    return}
   const m=location.hash.match(/join=([a-z0-9]{20,64})/);if(!m)return;const t=m[1];
   history.replaceState(null,'',location.pathname);
   let L=S.lists.find(l=>l.cloud===t);
@@ -522,7 +608,7 @@ function joinFromHash(){
   setPend(t,0);toast('הצטרפת לרשימה המשותפת ☁︎');
 }
 function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function renderAll(){renderList();renderSugg();if($('#sc-lists').classList.contains('on'))renderLists()}
+function renderAll(){renderList();renderSugg();renderSyncUI();if($('#sc-lists').classList.contains('on'))renderLists()}
 
 /* ===== theme / boot ===== */
 function applyTheme(){document.documentElement.setAttribute('data-theme',S.theme==='auto'?'':S.theme);$('#themeBtn').textContent=S.theme==='dark'?'☀':S.theme==='light'?'☾':'◐'}
@@ -530,8 +616,8 @@ $('#themeBtn').onclick=()=>{S.theme=S.theme==='auto'?'light':S.theme==='light'?'
 function boot(){
   joinFromHash();
   applyTheme();renderList();renderSugg();
-  S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});
-  window.addEventListener('hashchange',()=>{joinFromHash();S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});go('list');renderAll()});
+  S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});startHome();renderSyncUI();
+  window.addEventListener('hashchange',()=>{joinFromHash();S.lists.forEach(L=>{if(L.cloud)startLive(L.cloud)});startHome();go('list');renderAll()});
   if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 boot();
