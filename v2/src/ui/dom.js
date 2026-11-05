@@ -31,8 +31,9 @@ export function openSheet(title, ...content) {
   sheetBg = h('div', { class: 'sheet-bg', onclick: (e) => { if (e.target === sheetBg) closeSheet(); } },
     h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, h('div', { class: 'grab' }), h('h3', null, title), ...content));
   document.body.append(sheetBg);
-  const f = sheetBg.querySelector('input,select,textarea,button');
-  if (f) setTimeout(() => f.focus(), 50);
+  // focus synchronously, and never steal focus later: a delayed focus() can move the caret into another field mid-typing
+  const f = sheetBg.querySelector('input:not([type=file]):not([type=checkbox]),select,textarea,button');
+  if (f && !sheetBg.contains(document.activeElement)) f.focus({ preventScroll: true });
   return sheetBg;
 }
 export function closeSheet() { if (sheetBg) { sheetBg.remove(); sheetBg = null; } }

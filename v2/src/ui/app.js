@@ -11,9 +11,11 @@ import { openScanner } from './scanner.js';
 import { lookupBarcode, saveProduct } from '../data/products.js';
 import * as PAN from '../core/pantry.js';
 import { openReceiptScan } from './receipts.js';
+import * as RC from '../core/recipes.js';
+import { BASIC_RECIPES } from '../core/basic-recipes.js';
 
-const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], pantry: [], lid: null, catFilter: null, showArchived: false };
-const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null, pantry: null };
+const S = { frame: null, user: undefined, profile: null, hid: null, household: null, members: [], lists: [], items: [], trips: [], budgets: [], pantry: [], recipes: [], plan: { days: {} }, planWeek: null, recipeCat: null, lid: null, catFilter: null, showArchived: false };
+const subs = { members: null, lists: null, items: null, activity: null, trips: null, budgets: null, pantry: null, recipes: null, plan: null };
 const stop = (k) => { if (subs[k]) { subs[k](); subs[k] = null; } };
 const stopAll = () => Object.keys(subs).forEach(stop);
 const ICONS = ['🛒', '🧺', '🏠', '🎉', '🥗', '💊', '👶', '🐾', '🏖️', '🎁', '🧽', '🍕'];
@@ -43,7 +45,7 @@ onUser(async (u) => {
 });
 
 async function selectHousehold(hid) {
-  stopAll(); S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = []; S.pantry = [];
+  stopAll(); S.hid = hid; S.household = null; S.members = []; S.lists = []; S.trips = []; S.budgets = []; S.pantry = []; S.recipes = []; S.plan = { days: {} }; S.planWeek = null;
   if (hid) {
     try { S.household = await R.getHousehold(hid); } catch (e) { S.household = null; }
     if (!S.household) { await R.forgetHousehold(hid).catch(() => {}); S.hid = null; }
@@ -53,6 +55,7 @@ async function selectHousehold(hid) {
       subs.trips = R.watchTrips(hid, (t) => { S.trips = t; rerenderIf('budget', 'history', 'lists'); }, permErr);
       subs.budgets = R.watchBudgets(hid, (b) => { S.budgets = b; rerenderIf('budget', 'lists'); }, permErr);
       subs.pantry = R.watchPantry(hid, (p) => { S.pantry = p; rerenderIf('pantry', 'lists'); }, permErr);
+      subs.recipes = R.watchRecipes(hid, (r) => { S.recipes = r; rerenderIf('meals', 'recipes', 'recipe'); }, permErr);
     }
   }
   render();
@@ -87,20 +90,24 @@ function render() {
   if (r === 'family') return mount(shell('משפחה', viewFamily()));
   if (r === 'budget') return mount(shell('תקציב', viewBudget()));
   if (r === 'pantry') return mount(shell('מזווה', viewPantry()));
+  if (r === 'meals') return mount(shell('ארוחות', viewMeals()));
+  if (r === 'recipes') return mount(shell('מתכונים', viewRecipes()));
+  if (r === 'recipe' && a) return mount(shell('מתכון', viewRecipe(a), { back: 'recipes' }));
   if (r === 'history') return mount(shell('היסטוריה', viewHistory()));
   if (r === 'settings') return mount(shell('הגדרות', viewSettings()));
   return mount(shell('רשימות', viewLists()));
 }
 
 function shell(title, body, { back, sub, actions } = {}) {
-  const tab = (id, e, label) => h('button', { class: 'tab' + (route()[0] === id || (id === 'lists' && ['list', 'shop'].includes(route()[0])) ? ' on' : ''), onclick: () => go(id), 'aria-label': label }, h('span', { class: 'e' }, e), label);
+  const GROUP = { lists: ['list', 'shop'], budget: ['history'], meals: ['recipes', 'recipe'] };
+  const tab = (id, e, label) => h('button', { class: 'tab' + (route()[0] === id || (GROUP[id] || []).includes(route()[0]) ? ' on' : ''), onclick: () => go(id), 'aria-label': label }, h('span', { class: 'e' }, e), label);
   return h('div', { class: 'app' },
     h('header', { class: 'top' },
       back ? h('button', { class: 'icon-btn', onclick: () => go(back), 'aria-label': 'חזרה' }, '→') : h('div', { class: 'logo', 'aria-hidden': 'true' }, 'S'),
       h('div', { class: 'ttl' }, title, h('small', null, sub || S.household?.name || 'SmartCart')),
       actions || null),
     h('main', { class: 'wrap' }, body),
-    S.hid ? h('nav', { class: 'tabbar glass', 'aria-label': 'ניווט' }, tab('lists', '🛒', 'רשימות'), tab('pantry', '🥫', 'מזווה'), tab('budget', '💰', 'תקציב'), tab('history', '🧾', 'היסטוריה'), tab('family', '👨‍👩‍👧', 'משפחה'), tab('settings', '⚙️', 'הגדרות')) : null);
+    S.hid ? h('nav', { class: 'tabbar glass', 'aria-label': 'ניווט' }, tab('lists', '🛒', 'רשימות'), tab('pantry', '🥫', 'מזווה'), tab('meals', '🍳', 'ארוחות'), tab('budget', '💰', 'כסף'), tab('family', '👨‍👩‍👧', 'משפחה'), tab('settings', '⚙️', 'הגדרות')) : null);
 }
 
 /* ---------------- login ---------------- */
@@ -471,7 +478,7 @@ const HE_M = ['ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני'
 function viewBudget() {
   const now = new Date(), admin = meIsAdmin();
   const st = BUD.budgetStatus(S.budgets, S.trips, now);
-  const box = h('div', null, h('h2', null, 'תקציב והוצאות'));
+  const box = h('div', null, seg([['budget', 'תקציב'], ['history', 'היסטוריה']]), h('h2', null, 'תקציב והוצאות'));
   if (!S.budgets.length) box.append(h('div', { class: 'card glass' }, h('b', null, 'עוד לא הוגדר תקציב'), h('p', { class: 'hint' }, admin ? 'הגדר תקציב חודשי או שבועי, ואפשר גם לפי מחלקה. תקבל התראה כשמתקרבים לגבול.' : 'מנהל משק הבית יכול להגדיר תקציב.')));
   for (const b of st) {
     const color = b.state === 'over' ? 'var(--red)' : b.state === 'warn' ? 'var(--amber)' : 'var(--accent)';
@@ -514,7 +521,7 @@ function budgetSheet(b) {
 
 /* ================= Phase 4: shopping history ================= */
 function viewHistory() {
-  const box = h('div', null, h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap' }, h('h2', null, 'היסטוריית קניות'),
+  const box = h('div', null, seg([['budget', 'תקציב'], ['history', 'היסטוריה']]), h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap' }, h('h2', null, 'היסטוריית קניות'),
     h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => openReceiptScan((r) => R.addReceipt(S.hid, r)) }, '📄 סריקת קבלה'), h('button', { class: 'btn ghost sm', onclick: manualExpense }, '+ הוצאה ידנית'))));
   const reg = BUD.regulars(S.trips);
   if (reg.length) box.append(h('div', { class: 'card glass' }, h('b', null, `🔁 מוצרים קבועים (${reg.length})`),
@@ -645,4 +652,158 @@ function pantrySheet(i) {
         (i ? R.updatePantry(S.hid, i.id, data) : Promise.resolve(R.addPantry(S.hid, data))).then(() => toast('נשמר ✓')).catch(permErr);
         closeSheet();
       } }, 'שמירה')));
+}
+
+/* segmented control between sibling screens */
+function seg(items) {
+  const cur = route()[0];
+  return h('div', { class: 'chips', role: 'tablist', style: 'margin-bottom:6px' }, items.map(([id, label]) => h('button', { class: 'chip' + (cur === id ? ' on' : ''), role: 'tab', 'aria-selected': cur === id ? 'true' : 'false', onclick: () => go(id) }, label)));
+}
+
+/* ================= Phase 7: meal planning ================= */
+function weekStartOf(d) { return BUD.periodKey(d, 'week'); }
+function shiftWeek(key, n) { const [y, m, d] = key.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d + 7 * n)); return t.toISOString().slice(0, 10); }
+function ensurePlan() {
+  const wk = S.planWeek || (S.planWeek = weekStartOf(new Date()));
+  if (subs.plan && subs.plan.wk === wk) return;
+  stop('plan');
+  const u = R.watchMealPlan(S.hid, wk, (p) => { S.plan = p; rerenderIf('meals'); }, permErr);
+  subs.plan = Object.assign(() => u(), { wk });
+}
+const DAYS_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+function viewMeals() {
+  ensurePlan();
+  const wk = S.planWeek, [y, m, d] = wk.split('-').map(Number);
+  const dayDate = (i) => new Date(Date.UTC(y, m - 1, d + i)).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', timeZone: 'UTC' });
+  const box = h('div', null, seg([['meals', 'תכנון שבועי'], ['recipes', 'מתכונים']]),
+    h('div', { class: 'row', style: 'justify-content:space-between;margin:6px 0 10px' },
+      h('button', { class: 'icon-btn', 'aria-label': 'שבוע קודם', onclick: () => { S.planWeek = shiftWeek(wk, -1); render(); } }, '→'),
+      h('b', null, `שבוע ${dayDate(0)}–${dayDate(6)}`),
+      h('button', { class: 'icon-btn', 'aria-label': 'שבוע הבא', onclick: () => { S.planWeek = shiftWeek(wk, 1); render(); } }, '←')));
+  if (!S.recipes.length) box.append(h('div', { class: 'card glass' }, h('b', null, 'עוד אין מתכונים'), h('p', { class: 'hint' }, 'הוסף מתכון משלך, או טען מאגר קטן של מתכוני בסיס (שקשוקה, סלט, פסטה, שניצל ועוד).'),
+    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => go('recipes') }, 'למתכונים'), h('button', { class: 'btn ghost sm', onclick: loadBasics }, 'טעינת מתכוני בסיס'))));
+  let planned = 0;
+  for (let i = 0; i < 7; i++) {
+    const day = S.plan.days?.['d' + i] || {};
+    const card = h('div', { class: 'card glass', style: 'padding:10px 12px' }, h('b', null, `${DAYS_HE[i]} · ${dayDate(i)}`));
+    for (const meal of RC.MEALS) {
+      const entries = day[meal.id] || []; planned += entries.length;
+      card.append(h('div', { class: 'row', style: 'flex-wrap:wrap;gap:6px;padding:4px 0;border-top:1px solid var(--line)' },
+        h('span', { class: 'hint', style: 'width:52px' }, meal.name),
+        entries.map((e, idx) => { const r = S.recipes.find((x) => x.id === e.recipeId); return h('span', { class: 'chip on', style: 'cursor:default' }, (r?.name || 'מתכון שנמחק') + ` · ${e.servings} מנות `,
+          h('button', { class: 'chip', style: 'padding:0 6px;margin-inline-start:4px', 'aria-label': 'הסרה', onclick: () => { const days = structuredClone(S.plan.days || {}); days['d' + i][meal.id].splice(idx, 1); R.saveMealPlan(S.hid, wk, days).catch(permErr); } }, '✕')); }),
+        S.recipes.length ? h('button', { class: 'chip', 'aria-label': `הוספת מתכון ל${DAYS_HE[i]} ${meal.name}`, onclick: () => pickRecipe(i, meal.id) }, '+') : null));
+    }
+    box.append(card);
+  }
+  if (planned) box.append(h('button', { class: 'btn block', onclick: () => listFromPlan() }, '🛒 רשימת קניות מהתפריט של השבוע'));
+  return box;
+}
+function pickRecipe(dayIdx, meal) {
+  const servings = h('input', { class: 'input', type: 'number', min: '1', max: '100', value: S.household?.defaultServings || 4, style: 'width:90px' });
+  openSheet('בחירת מתכון', h('div', { class: 'row', style: 'margin-bottom:10px' }, h('span', { class: 'hint' }, 'מספר סועדים'), servings),
+    ...S.recipes.map((r) => h('button', { class: 'btn ghost block', style: 'margin-bottom:6px;text-align:right', onclick: () => {
+      const n = Math.max(1, Math.min(100, parseInt(servings.value, 10) || r.servings));
+      const days = structuredClone(S.plan.days || {}); days['d' + dayIdx] = days['d' + dayIdx] || {}; (days['d' + dayIdx][meal] = days['d' + dayIdx][meal] || []).push({ recipeId: r.id, servings: n });
+      R.saveMealPlan(S.hid, S.planWeek, days).then(() => toast('נוסף לתפריט ✓')).catch(permErr); closeSheet();
+    } }, r.name + (r.category ? ' · ' + r.category : ''))));
+}
+async function loadBasics() {
+  const have = new Set(S.recipes.map((r) => r.name));
+  const add = BASIC_RECIPES.filter((r) => !have.has(r.name));
+  if (!add.length) return toast('מתכוני הבסיס כבר נטענו');
+  try { await R.addBasicRecipes(S.hid, add); toast(`נוספו ${add.length} מתכוני בסיס ✓`); } catch (e) { permErr(e); }
+}
+/** From plan or single recipe → aggregate → subtract pantry → preview → merge into a list (no duplicates). */
+function listFromPlan(lines = RC.planIngredients(S.plan, S.recipes), title = 'רשימה מהתפריט') {
+  const needed = RC.aggregate(lines);
+  const { need, covered } = RC.subtractPantry(needed, S.pantry);
+  const lists = S.lists.filter((l) => !l.archived);
+  const fmt = (n) => n.qty === null ? (n.unknownAmount ? 'כמות לפי המתכון' : '') : formatQty(n.qty, n.unit);
+  openSheet(title,
+    h('p', { class: 'hint' }, `${need.length} מוצרים לקנות` + (covered.length ? `, ${covered.length} כבר יש בבית (לפי המלאי)` : '') + '. מוצר שכבר ברשימה לא יתווסף פעמיים, רק הכמות תעודכן.'),
+    h('div', { class: 'feed' }, need.map((n) => h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', null, n.name), h('span', { class: 'hint' }, [fmt(n), n.partlyAtHome ? 'חלק כבר בבית' : ''].filter(Boolean).join(' · '))))),
+    covered.length ? h('details', null, h('summary', { class: 'hint' }, 'כבר בבית: ' + covered.map((c) => c.name).join(', '))) : null,
+    h('div', { class: 'hint', style: 'margin-top:8px' }, 'להוסיף לרשימה:'),
+    ...(lists.length ? lists : []).map((l) => h('button', { class: 'btn ghost block', style: 'margin-top:6px', onclick: async () => {
+      closeSheet();
+      try {
+        const items = await new Promise((res) => { const u = R.watchItems(S.hid, l.id, (it) => { u(); res(it); }, () => res([])); });
+        const merge = RC.mergeIntoList(items, need);
+        await R.applyListMerge(S.hid, l.id, merge);
+        toast(`נוספו ${merge.creates.length}, עודכנו ${merge.updates.length} ✓`); go('list/' + l.id);
+      } catch (e) { permErr(e); }
+    } }, (l.icon || '🛒') + ' ' + l.name)),
+    h('button', { class: 'btn block', style: 'margin-top:8px', onclick: async () => {
+      closeSheet();
+      try { const lid = await R.createList(S.hid, { name: title, icon: '🍳' }); await R.applyListMerge(S.hid, lid, RC.mergeIntoList([], need)); toast('נוצרה רשימה ✓'); go('list/' + lid); } catch (e) { permErr(e); }
+    } }, '+ רשימה חדשה'));
+}
+
+/* ================= recipes library ================= */
+function viewRecipes() {
+  const cats = [...new Set(S.recipes.map((r) => r.category).filter(Boolean))];
+  const q = h('input', { class: 'input', placeholder: 'חיפוש מתכון או רכיב', 'aria-label': 'חיפוש מתכון' });
+  const listBox = h('div');
+  const paint = () => {
+    const t = q.value.trim();
+    const shown = S.recipes.filter((r) => (!S.recipeCat || r.category === S.recipeCat) && (!t || r.name.includes(t) || (r.ingredients || []).some((i) => (i.name || '').includes(t))));
+    listBox.replaceChildren(...(shown.length ? shown.map((r) => h('div', { class: 'lcard glass', role: 'button', tabindex: '0', onclick: () => go('recipe/' + r.id), onkeydown: (e) => { if (e.key === 'Enter') go('recipe/' + r.id); } },
+      h('div', { class: 'ic' }, '🍳'), h('div', { class: 'info' }, h('b', null, r.name), h('span', { class: 'hint' }, [r.category, r.servings + ' מנות', r.prepMinutes ? r.prepMinutes + ' דק׳' : '', RC.DIFFICULTY.find((d) => d.id === r.difficulty)?.name, r.source === 'basic' ? 'מתכון בסיס' : ''].filter(Boolean).join(' · ')))))
+      : [h('div', { class: 'empty' }, h('div', { class: 'big' }, '📖'), S.recipes.length ? 'לא נמצאו מתכונים.' : 'אין עדיין מתכונים.')]));
+  };
+  q.addEventListener('input', paint); paint();
+  return h('div', null, seg([['meals', 'תכנון שבועי'], ['recipes', 'מתכונים']]),
+    h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap' }, h('h2', null, 'מתכונים'),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: () => recipeSheet() }, '+ מתכון'), h('button', { class: 'btn ghost sm', onclick: loadBasics }, 'מתכוני בסיס'))),
+    h('div', { class: 'field' }, q),
+    cats.length ? h('div', { class: 'chips' }, h('button', { class: 'chip' + (!S.recipeCat ? ' on' : ''), onclick: () => { S.recipeCat = null; render(); } }, 'הכל'), cats.map((c) => h('button', { class: 'chip' + (S.recipeCat === c ? ' on' : ''), onclick: () => { S.recipeCat = c; render(); } }, c))) : null,
+    listBox);
+}
+function viewRecipe(id) {
+  const r = S.recipes.find((x) => x.id === id);
+  if (!r) return h('div', { class: 'empty' }, 'המתכון לא נמצא.');
+  let servings = r.servings;
+  const ingBox = h('div', { class: 'feed' });
+  const num = h('b', { 'aria-live': 'polite' }, String(servings));
+  const paint = () => { num.textContent = String(servings);
+    ingBox.replaceChildren(...RC.scaleIngredients(r, servings).map((i) => { const nq = RC.niceQty(i.qty, i.unit); return h('div', null, [i.qty != null ? (i.measure ? `${i.qty} ${i.measure}` : formatQty(nq.qty, nq.unit)) : '', i.name].filter(Boolean).join(' ')); })); };
+  paint();
+  return h('div', null,
+    h('h2', null, r.name),
+    h('div', { class: 'hint' }, [r.category, r.prepMinutes ? `${r.prepMinutes} דקות` : '', RC.DIFFICULTY.find((d) => d.id === r.difficulty)?.name, r.source === 'basic' ? 'מתכון בסיס' : 'נוסף ע״י ' + (r.createdByName || '')].filter(Boolean).join(' · ')),
+    h('div', { class: 'card glass', style: 'margin-top:10px' },
+      h('div', { class: 'row', style: 'justify-content:space-between' }, h('b', null, 'רכיבים'),
+        h('div', { class: 'row' }, h('button', { class: 'icon-btn', 'aria-label': 'פחות מנות', onclick: () => { if (servings > 1) { servings--; paint(); } } }, '−'), h('span', null, num, ' מנות'), h('button', { class: 'icon-btn', 'aria-label': 'יותר מנות', onclick: () => { if (servings < 100) { servings++; paint(); } } }, '+'))),
+      ingBox),
+    (r.steps || []).length ? h('div', { class: 'card glass' }, h('b', null, 'הכנה'), h('ol', { style: 'padding-inline-start:20px;margin:8px 0 0' }, r.steps.map((st) => h('li', { style: 'margin-bottom:6px' }, st)))) : null,
+    h('button', { class: 'btn block', onclick: () => listFromPlan(RC.scaleIngredients(r, servings).map((i) => ({ ...i, from: r.name })), 'רשימה ל' + r.name) }, '🛒 הוספת הרכיבים לרשימה'),
+    h('div', { class: 'row', style: 'margin-top:8px' },
+      h('button', { class: 'btn ghost block', onclick: () => recipeSheet(r) }, 'עריכה'),
+      h('button', { class: 'btn ghost block', style: 'color:var(--red)', onclick: () => confirmSheet('למחוק את "' + r.name + '"?', 'המתכון יימחק מהמאגר של המשפחה.', 'מחיקה', () => R.deleteRecipe(S.hid, r.id).then(() => { toast('נמחק'); go('recipes'); }).catch(permErr)) }, 'מחיקה')));
+}
+function recipeSheet(r) {
+  const name = h('input', { class: 'input', value: r?.name || '', maxlength: '100', placeholder: 'שם המתכון' });
+  const cat = h('select', { class: 'input' }, RC.RCATS.map((c) => h('option', { value: c, selected: (r?.category || 'עיקרית') === c }, c)));
+  const servings = h('input', { class: 'input', type: 'number', min: '1', max: '100', value: r?.servings || 4 });
+  const prep = h('input', { class: 'input', type: 'number', min: '0', max: '2880', value: r?.prepMinutes ?? '', placeholder: 'דקות' });
+  const diff = h('select', { class: 'input' }, RC.DIFFICULTY.map((d) => h('option', { value: d.id, selected: (r?.difficulty || 'easy') === d.id }, d.name)));
+  const ing = h('textarea', { class: 'input', rows: '7', placeholder: 'רכיב בכל שורה, למשל:\n500 גרם חזה עוף\n2 כוסות קמח\n6 ביצים\nמלח' });
+  ing.value = (r?.ingredients || []).map((i) => [i.qty != null ? i.qty : '', i.measure || (i.unit && i.unit !== 'unit' ? UNITS[i.unit]?.he : ''), i.name].filter((x) => x !== '').join(' ')).join('\n');
+  const steps = h('textarea', { class: 'input', rows: '5', placeholder: 'שלב בכל שורה' }); steps.value = (r?.steps || []).join('\n');
+  openSheet(r ? 'עריכת מתכון' : 'מתכון חדש',
+    h('div', { class: 'field' }, h('label', null, 'שם'), name),
+    h('div', { class: 'row' }, h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'קטגוריה'), cat), h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'רמת קושי'), diff)),
+    h('div', { class: 'row' }, h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'מספר מנות'), servings), h('div', { class: 'field', style: 'flex:1' }, h('label', null, 'זמן הכנה'), prep)),
+    h('div', { class: 'field' }, h('label', null, 'רכיבים'), ing),
+    h('div', { class: 'field' }, h('label', null, 'הוראות הכנה'), steps),
+    h('button', { class: 'btn block', onclick: async () => {
+      const n = name.value.trim(); if (!n) return toast('צריך שם');
+      const ingredients = ing.value.split('\n').map(RC.parseIngredient).filter(Boolean);
+      if (!ingredients.length) return toast('צריך לפחות רכיב אחד');
+      const sv = parseInt(servings.value, 10); if (!(sv >= 1 && sv <= 100)) return toast('מספר מנות לא תקין');
+      const pm = prep.value === '' ? null : parseInt(prep.value, 10);
+      try { const id = await R.saveRecipe(S.hid, r?.id, { name: n, category: cat.value, servings: sv, prepMinutes: pm, difficulty: diff.value, ingredients, steps: steps.value.split('\n').map((x) => x.trim()).filter(Boolean), source: r?.source || 'user' }); closeSheet(); toast('נשמר ✓'); go('recipe/' + id); }
+      catch (e) { permErr(e); }
+    } }, 'שמירה'));
 }
