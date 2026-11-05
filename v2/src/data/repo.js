@@ -195,3 +195,38 @@ export async function listFromItems(hid, name, items, icon = '🔁') {
   await b.commit();
   return lid;
 }
+
+/* ---------- receipts (Phase 5): confirmed OCR data + linked trip, written atomically ---------- */
+export async function addReceipt(hid, r) {
+  const rref = doc(collection(db, 'households', hid, 'receipts'));
+  const tref = doc(collection(db, 'households', hid, 'trips'));
+  const [yy, mm, dd] = (r.date || '').split('-').map(Number);
+  const at = yy ? Timestamp.fromDate(new Date(Date.UTC(yy, mm - 1, dd, 10))) : Timestamp.now();
+  const b = writeBatch(db);
+  b.set(rref, clean({ store: r.store || undefined, date: r.date || null, total: Number.isInteger(r.total) ? r.total : null, currency: 'ILS',
+    items: (r.items || []).slice(0, 300), rawText: (r.rawText || '').slice(0, 10000), confidence: typeof r.confidence === 'number' ? Math.max(0, Math.min(1, r.confidence)) : undefined,
+    engine: r.engine ? String(r.engine).slice(0, 80) : undefined, warnings: (r.warnings || []).slice(0, 20), tripId: tref.id, by: me().uid, byName: myName(), createdAt: serverTimestamp() }));
+  b.set(tref, clean({ at, store: r.store || undefined, total: Number.isInteger(r.total) ? r.total : null, estTotal: null, currency: 'ILS',
+    items: (r.items || []).slice(0, 300), by: me().uid, byName: myName(), receiptId: rref.id, createdAt: serverTimestamp() }));
+  await b.commit();
+  logActivity(hid, 'receipt.add', { text: (r.store ? r.store + ' · ' : '') + (Number.isInteger(r.total) ? (r.total / 100).toFixed(2) + ' ₪' : '') });
+  return { receiptId: rref.id, tripId: tref.id };
+}
+export const getReceipt = async (hid, rid) => { const s = await getDoc(doc(db, 'households', hid, 'receipts', rid)); return s.exists() ? { id: rid, ...s.data() } : null; };
+export const deleteReceipt = (hid, rid) => deleteDoc(doc(db, 'households', hid, 'receipts', rid));
+
+/* ---------- pantry (Phase 6) ---------- */
+export const watchPantry = (hid, cb, err) => onSnapshot(collection(db, 'households', hid, 'pantry'), (qs) => cb(qs.docs.map((d) => ({ id: d.id, ...d.data() }))), err);
+export function addPantry(hid, p) {
+  const ref = doc(collection(db, 'households', hid, 'pantry'));
+  setDoc(ref, clean({ ...p, addedBy: me().uid, addedByName: myName(), createdAt: serverTimestamp(), updatedAt: serverTimestamp() })).catch((e) => console.warn('addPantry', e));
+  return ref.id;
+}
+export const updatePantry = (hid, pid, patch) => updateDoc(doc(db, 'households', hid, 'pantry', pid), clean({ ...patch, updatedAt: serverTimestamp() }));
+export const deletePantry = (hid, pid) => deleteDoc(doc(db, 'households', hid, 'pantry', pid));
+export async function applyPantryMerge(hid, { updates, creates }) {
+  const b = writeBatch(db);
+  for (const u of updates) b.update(doc(db, 'households', hid, 'pantry', u.id), { qty: u.qty, updatedAt: serverTimestamp() });
+  for (const c of creates) b.set(doc(collection(db, 'households', hid, 'pantry')), clean({ ...c, addedBy: me().uid, addedByName: myName(), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await b.commit();
+}
