@@ -44,3 +44,5 @@ export const search = (branchId, q, opts) => untilLoaded(() => call(`/api/search
  *  as soon as no branch is loading any more. */
 export const prices = (branchIds, codes, opts) => untilLoaded(() => call('/api/prices', { branches: branchIds, codes }), opts);
 export const history = (branchId, code) => call(`/api/history?branch=${encodeURIComponent(branchId)}&code=${encodeURIComponent(code)}`).then((r) => r.history);
+/** Whole list matched by name in every branch (no manual product picking). items: [{id,name,unit,code?}] */
+export const match = (branchIds, items, opts) => untilLoaded(() => call('/api/match', { branches: branchIds, items }, { timeout: 45000 }), opts);
