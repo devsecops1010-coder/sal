@@ -1,6 +1,6 @@
 // SmartCart v2 — offline service worker
-const CACHE = 'smartcart-v2-1';
-const ASSETS = ['./', './index.html', './app.css', './manifest.json', './src/ui/app.js', './src/ui/dom.js', './src/data/fb.js', './src/data/repo.js', './src/data/firebase-config.js', './src/core/money.js', './src/core/units.js', './src/core/categorize.js', './src/core/search.js', './src/core/barcode.js'];
+const CACHE = 'smartcart-v2-2';
+const ASSETS = ['./', './index.html', './app.css', './manifest.json', './src/ui/app.js', './src/ui/dom.js', './src/data/fb.js', './src/data/repo.js', './src/data/firebase-config.js', './src/core/money.js', './src/core/units.js', './src/core/categorize.js', './src/core/search.js', './src/core/barcode.js', './src/core/budget.js', './src/core/recommend.js', './src/data/products.js', './src/ui/scanner.js'];
 // versioned third-party libraries (Firebase, SheetJS, QR) — safe to serve from cache, lets the app open offline
 const LIB = /^https:\/\/(www\.gstatic\.com\/firebasejs\/|cdn\.jsdelivr\.net\/npm\/xlsx@|cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs\/)/;
 self.addEventListener('install', e => {
