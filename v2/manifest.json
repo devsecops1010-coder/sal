@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "SmartCart · סל חכם",
+  "short_name": "SmartCart",
+  "description": "רשימות קניות משפחתיות חכמות",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#0b1a14",
+  "theme_color": "#0b1a14",
+  "icons": [
+    { "src": "../icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
