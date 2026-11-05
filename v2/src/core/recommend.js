@@ -43,6 +43,11 @@ function sizeInBase(size, unit) {
  * Anything looser is returned only as a SIMILAR substitute, never as the item itself.
  */
 export function matchItem(item, branchPrices) {
+  // same product code as published by the chain (also covers internal codes that are not valid EAN barcodes)
+  if (item.productKey) {
+    const p = branchPrices.find((r) => r.productKey && String(r.productKey) === String(item.productKey));
+    if (p) return { level: MATCH.EXACT, row: p };
+  }
   const bc = item.barcode && normalizeBarcode(item.barcode);
   if (bc) {
     const p = branchPrices.find((r) => r.barcode && normalizeBarcode(r.barcode) === bc);
