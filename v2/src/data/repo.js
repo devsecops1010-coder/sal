@@ -159,3 +159,39 @@ export async function importFromV1(hid, v1State, { migrateCategory, parseQty }) 
   logActivity(hid, 'import.v1', { text: `${nLists} רשימות, ${nItems} פריטים` });
   return { nLists, nItems };
 }
+
+/* ---------- trips (= actual expenses + shopping history), Phase 4 ---------- */
+export async function addTrip(hid, t) {
+  const ref = doc(collection(db, 'households', hid, 'trips'));
+  await setDoc(ref, clean({
+    at: t.at instanceof Date ? Timestamp.fromDate(t.at) : Timestamp.now(), listId: t.listId, listName: t.listName ? String(t.listName).slice(0, 60) : undefined,
+    store: t.store ? String(t.store).slice(0, 80) : undefined, total: Number.isInteger(t.total) ? t.total : null, estTotal: Number.isInteger(t.estTotal) ? t.estTotal : null,
+    currency: 'ILS', items: (t.items || []).slice(0, 300), by: me().uid, byName: myName(), note: t.note || undefined, createdAt: serverTimestamp(),
+  }));
+  logActivity(hid, 'trip.add', { listId: t.listId, text: (t.store ? t.store + ' · ' : '') + (Number.isInteger(t.total) ? (t.total / 100).toFixed(2) + ' ₪' : '') });
+  return ref.id;
+}
+export const watchTrips = (hid, cb, err) => onSnapshot(query(collection(db, 'households', hid, 'trips'), orderBy('at', 'desc'), limit(300)),
+  (qs) => cb(qs.docs.map((d) => { const x = d.data(); return { id: d.id, ...x, at: x.at?.toDate ? x.at.toDate() : new Date() }; })), err);
+export const updateTrip = (hid, tid, patch) => updateDoc(doc(db, 'households', hid, 'trips', tid), clean({ ...patch, updatedAt: serverTimestamp() }));
+export const deleteTrip = (hid, tid) => deleteDoc(doc(db, 'households', hid, 'trips', tid));
+
+/* ---------- budgets ---------- */
+export const watchBudgets = (hid, cb, err) => onSnapshot(collection(db, 'households', hid, 'budgets'), (qs) => cb(qs.docs.map((d) => ({ id: d.id, ...d.data() }))), err);
+export const setBudget = (hid, id, { period, amount, cat = null }) => setDoc(doc(db, 'households', hid, 'budgets', id), { period, amount, cat, currency: 'ILS', updatedAt: serverTimestamp(), updatedBy: me().uid });
+export const deleteBudget = (hid, id) => deleteDoc(doc(db, 'households', hid, 'budgets', id));
+
+/** New list from a set of items (repeat a past basket / "regulars"). Never touches the source. */
+export async function listFromItems(hid, name, items, icon = '🔁') {
+  const lid = await createList(hid, { name, icon });
+  const b = writeBatch(db); let o = Date.now();
+  for (const it of items.slice(0, 400)) {
+    b.set(doc(collection(db, 'households', hid, 'lists', lid, 'items')), clean({
+      name: String(it.name).slice(0, 120), qty: typeof it.qty === 'number' ? it.qty : (it.lastQty ?? 1), unit: it.unit || it.lastUnit || 'unit', cat: it.cat || 'other',
+      priceEst: Number.isInteger(it.unitPrice) ? it.unitPrice : undefined, barcode: it.barcode, currency: 'ILS', done: false,
+      addedBy: me().uid, addedByName: myName(), order: o--, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    }));
+  }
+  await b.commit();
+  return lid;
+}
