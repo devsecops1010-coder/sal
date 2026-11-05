@@ -1,6 +1,7 @@
 // Client for the SmartCart price service (official price-transparency files, read-only).
 // Local tests may point it elsewhere with ?prices=http://127.0.0.1:PORT (only on localhost).
-const DEFAULT = 'https://smartcart.129.159.25.182.sslip.io';
+// on link3.co.il the API is on the same site (/sal/api); on GitHub Pages it is the server's own address
+const DEFAULT = ['link3.co.il', 'www.link3.co.il'].includes(location.hostname) ? location.origin + '/sal' : 'https://smartcart.129.159.25.182.sslip.io';
 const qp = new URLSearchParams(location.search).get('prices');
 export const BASE = qp && ['127.0.0.1', 'localhost'].includes(location.hostname) && /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(qp) ? qp : DEFAULT;
 
